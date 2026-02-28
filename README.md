@@ -47,6 +47,17 @@ cd server && npm run dev    # Equivalent
 
 The server starts on `http://localhost:3000` with a health check at `/health` and MCP endpoint at `/mcp`.
 
+### Plugin Install
+
+1. Update `plugin/.mcp.json` with your deployed server URL (replace `PLACEHOLDER_URL`)
+2. Install the plugin:
+
+```bash
+claude plugin add ./plugin
+```
+
+OAuth authentication is handled automatically by Claude Code on first connection.
+
 ### Running Tests
 
 ```bash
@@ -79,10 +90,10 @@ In active development. The MCP server core is implemented with `search_food`, `g
 - SQLite cache with TTL revalidation and graceful degradation
 - Custom food storage (`save_food`) for restaurant items and nutrition labels, with 90-day TTL and upsert semantics
 - MCP OAuth 2.1 authentication with PKCE, dynamic client registration, and bearer token middleware
+- Claude Code plugin with `nutrition-tracker` skill (see `plugin/README.md` for setup)
 
 **Planned:**
 
-- Claude Code plugin with `nutrition-tracker` skill
 - AWS deployment
 
 ## License

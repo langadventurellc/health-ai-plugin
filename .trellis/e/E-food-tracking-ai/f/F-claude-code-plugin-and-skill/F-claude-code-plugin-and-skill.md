@@ -1,7 +1,7 @@
 ---
 id: F-claude-code-plugin-and-skill
 title: Claude Code Plugin and Skill
-status: open
+status: done
 priority: high
 parent: E-food-tracking-ai
 prerequisites:
@@ -9,10 +9,31 @@ prerequisites:
   - F-unit-conversion-and-meal
   - F-custom-food-storage
   - F-mcp-oauth-21-authentication
-affectedFiles: {}
-log: []
+affectedFiles:
+  plugin/.claude-plugin/plugin.json: 'Created plugin metadata: name
+    "food-tracking-ai", version "1.0.0", description of the plugin'
+  plugin/.mcp.json: Created MCP server configuration with type "http" and
+    placeholder URL pointing to /mcp endpoint, using mcpServers wrapper matching
+    Claude Code plugin conventions
+  plugin/README.md: 'Created documentation covering: what the plugin does,
+    prerequisites (deployed server + Claude Code), setup (URL replacement in
+    .mcp.json and plugin install command), OAuth 2.1 authentication note, usage
+    examples (slash command and natural language), and list of four available
+    MCP tools'
+  plugin/skills/nutrition-tracker/SKILL.md: 'Created placeholder with TODO
+    comment; full content deferred to sibling task T-write-skillmd-conversation;
+    Replaced placeholder with complete skill definition (337 lines). Covers:
+    conversation flow, input parsing, clarifying questions with defaults table,
+    food search/lookup workflow with exact tool parameters, image handling
+    (labels/food photos/combined), restaurant food flow with save_food caching,
+    response format with confidence score examples, confidence scoring scale and
+    factors, and general behavioral guidelines.'
+log:
+  - 'Auto-completed: All child tasks are complete'
 schema: v1.0
-childrenIds: []
+childrenIds:
+  - T-create-plugin-scaffold
+  - T-write-skillmd-conversation
 created: 2026-02-28T16:58:33.208Z
 updated: 2026-02-28T16:58:33.208Z
 ---

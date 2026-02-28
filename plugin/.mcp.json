@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "food-tracking-ai": {
+      "type": "http",
+      "url": "https://PLACEHOLDER_URL/mcp"
+    }
+  }
+}
