@@ -22,7 +22,7 @@ The LLM reasons about _what_ was eaten and _how much_. The MCP server does the _
 - **Stack:** TypeScript (ES2022, NodeNext), Express 5, MCP SDK, better-sqlite3, Zod
 - **Data sources:** USDA FoodData Central (primary, generic foods) + Open Food Facts (branded/packaged products) + Custom foods (user-saved via `save_food`)
 - **Implemented tools:** `search_food`, `get_nutrition`, `calculate_meal`, `save_food`
-- **Not yet implemented:** OAuth 2.1 auth
+- **Auth:** MCP OAuth 2.1 with PKCE, dynamic client registration, bearer token middleware on all `/mcp` routes. Single-user v1 (auto-approve). Uses MCP SDK's `mcpAuthRouter` and `requireBearerAuth`.
 - **Cache:** SQLite with TTL revalidation (30d USDA, 7d Open Food Facts, 90d custom/saved, 24h search results)
 - **Unit conversion:** Weight (g, kg, oz, lb), volume (cup, tbsp, tsp, fl_oz, mL, L) via per-food density, and descriptive sizes (piece, slice, small, medium, large) via USDA portion data. Errors when density or portion data is unavailable (never guesses).
 - **Graceful degradation:** When external APIs fail, stale cache data is served with `dataFreshness: "stale"` and warnings.
@@ -34,6 +34,10 @@ server/src/
   index.ts          # Express app, Streamable HTTP transport, session management
   server.ts         # McpServer factory, tool registration
   types.ts          # Shared types, NutrientValue, leastFresh helper
+  auth/
+    db.ts           # OAuth SQLite tables (oauth_clients, oauth_authorization_codes, oauth_tokens)
+    clients-store.ts # SqliteClientsStore: dynamic client registration backed by SQLite
+    provider.ts     # SqliteOAuthServerProvider: PKCE, token lifecycle (1h access, 30d refresh), auto-approve
   conversion/
     types.ts        # PortionData, FoodConversionContext
     units.ts        # convertToGrams (weight, volume, descriptive), unit detection
@@ -84,6 +88,7 @@ Both `npm install` steps are required. Root installs repo-wide tooling (git hook
 - `USDA_API_KEY` -- free from https://fdc.nal.usda.gov/api-key-signup
 - `PORT` -- defaults to 3000
 - `SQLITE_DB_PATH` -- defaults to `./data/food-cache.db`
+- `ISSUER_URL` -- OAuth 2.1 issuer identifier, defaults to `http://localhost:3000`. Must be `https` in production.
 
 ## Build, Run, Test
 
@@ -104,10 +109,11 @@ Equivalent npm scripts exist in `server/package.json` (`npm run dev`, `npm run b
 
 **Endpoints:**
 
-- `GET /health` -- health check
-- `POST /mcp` -- MCP Streamable HTTP (initialization and requests)
-- `GET /mcp` -- SSE stream for server-initiated messages
-- `DELETE /mcp` -- session termination
+- `GET /health` -- health check (unauthenticated)
+- `POST /mcp` -- MCP Streamable HTTP (initialization and requests, requires bearer token)
+- `GET /mcp` -- SSE stream for server-initiated messages (requires bearer token)
+- `DELETE /mcp` -- session termination (requires bearer token)
+- OAuth 2.1 endpoints auto-mounted by MCP SDK's `mcpAuthRouter` (authorization, token, registration, `.well-known/oauth-authorization-server`)
 
 ## Code Quality
 

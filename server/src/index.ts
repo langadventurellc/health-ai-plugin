@@ -2,15 +2,41 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
+import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import { createMcpServer } from './server.js';
 import { Cache } from './cache/cache.js';
-import { initializeDatabase, closeDatabase } from './cache/db.js';
+import { initializeDatabase, getDatabase, closeDatabase } from './cache/db.js';
+import { SqliteOAuthServerProvider } from './auth/provider.js';
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
+const ISSUER_URL = new URL(
+  process.env.ISSUER_URL ?? `http://localhost:${PORT}`,
+);
+
+// Initialize SQLite database (includes auth tables) before setting up the app
+initializeDatabase();
+
+const provider = new SqliteOAuthServerProvider(getDatabase());
 
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
+
+// Mount OAuth endpoints (authorization, token, registration, metadata)
+// Must be at the app root before MCP routes per SDK requirements
+app.use(
+  mcpAuthRouter({
+    provider,
+    issuerUrl: ISSUER_URL,
+    authorizationOptions: { rateLimit: false },
+    tokenOptions: { rateLimit: false },
+    clientRegistrationOptions: { rateLimit: false },
+    revocationOptions: { rateLimit: false },
+  }),
+);
+
+const bearerAuth = requireBearerAuth({ verifier: provider });
 
 // Track active transports by session ID for stateful connections
 const transports = new Map<string, StreamableHTTPServerTransport>();
@@ -24,7 +50,7 @@ app.get('/health', (_req, res) => {
  * MCP Streamable HTTP: POST handles initialization and all subsequent messages.
  * A new transport+server pair is created for each session on initialization.
  */
-app.post('/mcp', async (req, res) => {
+app.post('/mcp', bearerAuth, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
   if (sessionId && transports.has(sessionId)) {
@@ -88,7 +114,7 @@ app.post('/mcp', async (req, res) => {
 });
 
 /** MCP Streamable HTTP: GET opens an SSE stream for server-initiated messages. */
-app.get('/mcp', async (req, res) => {
+app.get('/mcp', bearerAuth, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !transports.has(sessionId)) {
     res.status(400).json({ error: 'Invalid or missing session ID' });
@@ -111,7 +137,7 @@ app.get('/mcp', async (req, res) => {
 });
 
 /** MCP Streamable HTTP: DELETE terminates a session. */
-app.delete('/mcp', async (req, res) => {
+app.delete('/mcp', bearerAuth, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !transports.has(sessionId)) {
     res.status(400).json({ error: 'Invalid or missing session ID' });
@@ -133,10 +159,7 @@ app.delete('/mcp', async (req, res) => {
   }
 });
 
-// Initialize SQLite cache database before accepting connections
-initializeDatabase();
-
-// Shared cache instance used by all sessions
+// Shared cache instance used by all sessions (database initialized above)
 const cache = new Cache();
 
 const server = app.listen(PORT, () => {
