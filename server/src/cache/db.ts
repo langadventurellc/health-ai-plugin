@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { initializeAuthTables } from '../auth/db.js';
 
 const DEFAULT_DB_PATH = './data/food-cache.db';
 
@@ -64,6 +65,8 @@ export function initializeDatabase(
     CREATE INDEX IF NOT EXISTS idx_custom_foods_name ON custom_foods(name COLLATE NOCASE);
     CREATE INDEX IF NOT EXISTS idx_custom_foods_brand ON custom_foods(brand COLLATE NOCASE);
   `);
+
+  initializeAuthTables(db);
 
   return db;
 }

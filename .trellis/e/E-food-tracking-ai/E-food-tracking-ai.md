@@ -16,7 +16,13 @@ affectedFiles:
   server/src/index.ts: 'Entry point: Express app with health check, Streamable
     HTTP transport on /mcp (POST/GET/DELETE), stateful session management with
     per-session transport+server pairs; Added Cache import and shared cache
-    instance creation. Passes cache to createMcpServer for each session.'
+    instance creation. Passes cache to createMcpServer for each session.; Added
+    imports for mcpAuthRouter, requireBearerAuth, getDatabase, and
+    SqliteOAuthServerProvider. Moved initializeDatabase() to top of module.
+    Created provider instance and configured mcpAuthRouter with rate limiting
+    disabled. Applied bearerAuth middleware to all three MCP routes
+    (POST/GET/DELETE /mcp). Added ISSUER_URL constant derived from env var with
+    localhost fallback.'
   server/src/server.ts: 'McpServer factory with placeholder search_food and
     get_nutrition tool stubs using zod input schemas; Replaced placeholder tool
     stubs with real implementations. createMcpServer now accepts Cache
@@ -36,12 +42,17 @@ affectedFiles:
     (PortionData[]) and densityGPerMl fields to NutritionData interface; Added
     StorageMode type ('per-100g' | 'per-serving') and optional storageMode field
     to NutritionData interface"
-  server/.env.example: 'Documents required env vars: USDA_API_KEY and PORT'
+  server/.env.example:
+    'Documents required env vars: USDA_API_KEY and PORT; Added
+    ISSUER_URL env var with description and default value for local
+    development.'
   server/src/cache/db.ts: 'Created database initialization module: singleton
     pattern, WAL mode, schema creation for nutrition_cache and search_cache
     tables, configurable path via SQLITE_DB_PATH env var; Added custom_foods
     table with id, name, brand, category, data, created_at, expires_at columns
-    and case-insensitive indexes on name and brand'
+    and case-insensitive indexes on name and brand; Modified: Added import and
+    call to initializeAuthTables so auth tables are created alongside cache
+    tables during database initialization'
   server/src/cache/cache.ts:
     Created Cache class with get/set/stale operations for
     nutrition and search data, TTL constants, query normalization with SHA-256
@@ -148,6 +159,19 @@ affectedFiles:
   server/src/tools/__tests__/save-food.test.ts: 'New file: 4 unit tests covering
     successful save, negative calorie validation, NaN validation, and upsert
     behavior'
+  server/src/auth/db.ts: 'New file: initializeAuthTables function creating
+    oauth_clients, oauth_authorization_codes, and oauth_tokens tables with index
+    on client_id'
+  server/src/auth/clients-store.ts: 'New file: SqliteClientsStore implementing
+    OAuthRegisteredClientsStore with getClient and registerClient backed by
+    SQLite'
+  server/src/auth/provider.ts: 'New file: SqliteOAuthServerProvider implementing
+    OAuthServerProvider interface with all required methods - authorize,
+    challengeForAuthorizationCode, exchangeAuthorizationCode,
+    exchangeRefreshToken, verifyAccessToken, revokeToken'
+  server/src/auth/__tests__/provider.test.ts: 'New file: 22 unit tests covering
+    token validation, PKCE flow, refresh token flow, auth code expiry, token
+    revocation, and authorize redirect behavior'
 log: []
 schema: v1.0
 childrenIds:
