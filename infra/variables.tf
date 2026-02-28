@@ -5,13 +5,15 @@ variable "aws_region" {
 }
 
 variable "domain_name" {
-  description = "FQDN for the MCP server (e.g., food.example.com)."
+  description = "FQDN for the MCP server. If null, uses ALB DNS name over HTTP (no auth)."
   type        = string
+  default     = null
 }
 
 variable "hosted_zone_id" {
-  description = "Route53 hosted zone ID for DNS validation and ALB alias record."
+  description = "Route53 hosted zone ID. Required when domain_name is set."
   type        = string
+  default     = null
 }
 
 variable "usda_api_key" {

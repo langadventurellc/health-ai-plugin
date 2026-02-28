@@ -2,19 +2,33 @@
 
 AWS deployment for the Food Tracking AI MCP server. Uses Terraform for infrastructure provisioning and GitHub Actions for continuous deployment.
 
+## Deployment Modes
+
+The infrastructure supports two deployment modes:
+
+| Mode          | Domain Required                        | Protocol       | Auth              | Use Case              |
+| ------------- | -------------------------------------- | -------------- | ----------------- | --------------------- |
+| **Domain**    | Yes (`domain_name` + `hosted_zone_id`) | HTTPS          | OAuth 2.1 enabled | Production            |
+| **No-domain** | No (omit both variables)               | HTTP (ALB DNS) | Disabled          | Development / testing |
+
+In **no-domain mode**, the server is accessible at the ALB's default DNS name over HTTP. OAuth authentication is automatically disabled (`AUTH_ENABLED=false`). This is suitable for development and testing but **should not be used for production** since traffic is unencrypted and unauthenticated.
+
+In **domain mode**, an ACM certificate is provisioned and validated via Route53, the ALB terminates HTTPS on port 443, HTTP requests are redirected to HTTPS, and OAuth 2.1 authentication is enabled.
+
 ## Prerequisites
 
 - **AWS CLI** configured with credentials that have sufficient permissions for Terraform
 - **Terraform** >= 1.5
 - **Docker** (for local image builds/testing)
-- **Route53 hosted zone** for the domain you want to use
+- **Route53 hosted zone** for the domain you want to use (domain mode only)
 - **GitHub repository** (the OIDC trust is tied to a specific repo)
 - **USDA API key** from https://fdc.nal.usda.gov/api-key-signup
 
 ## Architecture Overview
 
 - **ECS Fargate** running the MCP server container (single task, single-user v1)
-- **Application Load Balancer** with HTTPS (ACM certificate, auto-validated via Route53)
+- **Application Load Balancer** with HTTPS (domain mode) or HTTP (no-domain mode)
+- **ACM certificate** auto-validated via Route53 (domain mode only)
 - **EFS** for SQLite persistence across deployments
 - **ECR** for Docker image storage
 - **Secrets Manager** for the USDA API key
@@ -31,12 +45,22 @@ terraform init
 
 Create a `terraform.tfvars` file (this file is gitignored):
 
+**Domain mode** (HTTPS + auth):
+
 ```hcl
 domain_name    = "food.example.com"
 hosted_zone_id = "Z0123456789ABCDEF"
 usda_api_key   = "your-usda-api-key"
 github_repo    = "your-username/food-tracking-ai"
 aws_region     = "us-east-1"  # optional, defaults to us-east-1
+```
+
+**No-domain mode** (HTTP, no auth):
+
+```hcl
+usda_api_key = "your-usda-api-key"
+github_repo  = "your-username/food-tracking-ai"
+aws_region   = "us-east-1"  # optional, defaults to us-east-1
 ```
 
 Apply the infrastructure:
@@ -54,7 +78,7 @@ After `terraform apply` completes, copy the outputs into GitHub Actions **variab
 | `ecr_repository_url`      | `ECR_REPOSITORY_URL`    | ECR repo URL for Docker images       |
 | `ecs_cluster_name`        | `ECS_CLUSTER_NAME`      | ECS cluster name                     |
 | `ecs_service_name`        | `ECS_SERVICE_NAME`      | ECS service name                     |
-| `server_url`              | `SERVER_URL`            | HTTPS URL for health checks          |
+| `server_url`              | `SERVER_URL`            | Server URL for health checks         |
 | `github_actions_role_arn` | `AWS_ROLE_ARN`          | IAM role ARN for OIDC authentication |
 | _(your region)_           | `AWS_REGION`            | AWS region (e.g., `us-east-1`)       |
 
@@ -80,7 +104,9 @@ The workflow will:
 
 ### 4. Configure the Plugin
 
-Update `plugin/.mcp.json` to point to your deployed server. Replace `PLACEHOLDER_URL` in the URL with your domain name:
+Update `plugin/.mcp.json` to point to your deployed server. Replace `PLACEHOLDER_URL` in the URL with your server URL from the `server_url` Terraform output:
+
+**Domain mode:**
 
 ```diff
 - "url": "https://PLACEHOLDER_URL/mcp"
@@ -89,15 +115,24 @@ Update `plugin/.mcp.json` to point to your deployed server. Replace `PLACEHOLDER
 
 The first time Claude Code connects, it will complete the OAuth 2.1 flow automatically.
 
+**No-domain mode:**
+
+```diff
+- "url": "https://PLACEHOLDER_URL/mcp"
++ "url": "http://food-tracking-alb-123456.us-east-1.elb.amazonaws.com/mcp"
+```
+
+No OAuth flow is needed since auth is disabled.
+
 ## Terraform Variables
 
-| Variable         | Required | Default     | Description                                                |
-| ---------------- | -------- | ----------- | ---------------------------------------------------------- |
-| `domain_name`    | Yes      | --          | FQDN for the server (e.g., `food.example.com`)             |
-| `hosted_zone_id` | Yes      | --          | Route53 hosted zone ID for DNS validation and ALB alias    |
-| `usda_api_key`   | Yes      | --          | USDA FoodData Central API key (stored in Secrets Manager)  |
-| `github_repo`    | Yes      | --          | GitHub repo in `owner/repo` format (for OIDC trust policy) |
-| `aws_region`     | No       | `us-east-1` | AWS region for all resources                               |
+| Variable         | Required | Default     | Description                                                     |
+| ---------------- | -------- | ----------- | --------------------------------------------------------------- |
+| `domain_name`    | No       | `null`      | FQDN for the server. If null, uses ALB DNS over HTTP (no auth). |
+| `hosted_zone_id` | No       | `null`      | Route53 hosted zone ID. Required when `domain_name` is set.     |
+| `usda_api_key`   | Yes      | --          | USDA FoodData Central API key (stored in Secrets Manager)       |
+| `github_repo`    | Yes      | --          | GitHub repo in `owner/repo` format (for OIDC trust policy)      |
+| `aws_region`     | No       | `us-east-1` | AWS region for all resources                                    |
 
 ## Useful Commands
 

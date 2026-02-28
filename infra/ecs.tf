@@ -46,11 +46,16 @@ resource "aws_ecs_task_definition" "app" {
         }
       ]
 
-      environment = [
-        { name = "PORT", value = "3000" },
-        { name = "SQLITE_DB_PATH", value = "/app/data/food-cache.db" },
-        { name = "ISSUER_URL", value = "https://${var.domain_name}" }
-      ]
+      environment = concat(
+        [
+          { name = "PORT", value = "3000" },
+          { name = "SQLITE_DB_PATH", value = "/app/data/food-cache.db" },
+          { name = "AUTH_ENABLED", value = local.has_domain ? "true" : "false" },
+        ],
+        local.has_domain ? [
+          { name = "ISSUER_URL", value = "https://${var.domain_name}" }
+        ] : []
+      )
 
       secrets = [
         {
@@ -124,6 +129,7 @@ resource "aws_ecs_service" "app" {
 
   depends_on = [
     aws_lb_listener.https,
+    aws_lb_listener.http_forward,
     aws_efs_mount_target.data,
   ]
 

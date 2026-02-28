@@ -1,24 +1,29 @@
-# --- ACM Certificate ---
+# --- ACM Certificate (domain mode only) ---
 
 resource "aws_acm_certificate" "main" {
+  count             = local.has_domain ? 1 : 0
   domain_name       = var.domain_name
   validation_method = "DNS"
 
   tags = { Name = "${local.name_prefix}-cert" }
 
   lifecycle {
+    precondition {
+      condition     = var.hosted_zone_id != null
+      error_message = "hosted_zone_id is required when domain_name is set."
+    }
     create_before_destroy = true
   }
 }
 
 resource "aws_route53_record" "cert_validation" {
-  for_each = {
-    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+  for_each = local.has_domain ? {
+    for dvo in aws_acm_certificate.main[0].domain_validation_options : dvo.domain_name => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
     }
-  }
+  } : {}
 
   zone_id = var.hosted_zone_id
   name    = each.value.name
@@ -30,7 +35,8 @@ resource "aws_route53_record" "cert_validation" {
 }
 
 resource "aws_acm_certificate_validation" "main" {
-  certificate_arn         = aws_acm_certificate.main.arn
+  count                   = local.has_domain ? 1 : 0
+  certificate_arn         = aws_acm_certificate.main[0].arn
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
 
@@ -70,14 +76,15 @@ resource "aws_lb_target_group" "app" {
   tags = { Name = "${local.name_prefix}-tg" }
 }
 
-# --- HTTPS Listener (443) ---
+# --- HTTPS Listener (443, domain mode only) ---
 
 resource "aws_lb_listener" "https" {
+  count             = local.has_domain ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
-  certificate_arn   = aws_acm_certificate_validation.main.certificate_arn
+  certificate_arn   = aws_acm_certificate_validation.main[0].certificate_arn
 
   default_action {
     type             = "forward"
@@ -85,9 +92,10 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# --- HTTP Listener (80) -> Redirect to HTTPS ---
+# --- HTTP Listener (80) -> Redirect to HTTPS (domain mode only) ---
 
 resource "aws_lb_listener" "http_redirect" {
+  count             = local.has_domain ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
@@ -103,9 +111,24 @@ resource "aws_lb_listener" "http_redirect" {
   }
 }
 
-# --- Route53 Alias Record ---
+# --- HTTP Listener (80) -> Forward to target (no-domain mode only) ---
+
+resource "aws_lb_listener" "http_forward" {
+  count             = local.has_domain ? 0 : 1
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+
+# --- Route53 Alias Record (domain mode only) ---
 
 resource "aws_route53_record" "app" {
+  count   = local.has_domain ? 1 : 0
   zone_id = var.hosted_zone_id
   name    = var.domain_name
   type    = "A"

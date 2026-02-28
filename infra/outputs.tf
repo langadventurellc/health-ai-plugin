@@ -1,6 +1,6 @@
 output "server_url" {
-  description = "Full HTTPS URL of the deployed MCP server."
-  value       = "https://${var.domain_name}"
+  description = "URL of the deployed MCP server."
+  value       = local.has_domain ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
 }
 
 output "ecr_repository_url" {

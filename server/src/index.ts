@@ -13,6 +13,7 @@ const PORT = parseInt(process.env.PORT ?? '3000', 10);
 const ISSUER_URL = new URL(
   process.env.ISSUER_URL ?? `http://localhost:${PORT}`,
 );
+const AUTH_ENABLED = process.env.AUTH_ENABLED === 'true';
 
 // Initialize SQLite database (includes auth tables) before setting up the app
 initializeDatabase();
@@ -23,20 +24,23 @@ const app = express();
 app.disable('x-powered-by');
 app.use(express.json());
 
-// Mount OAuth endpoints (authorization, token, registration, metadata)
-// Must be at the app root before MCP routes per SDK requirements
-app.use(
-  mcpAuthRouter({
-    provider,
-    issuerUrl: ISSUER_URL,
-    authorizationOptions: { rateLimit: false },
-    tokenOptions: { rateLimit: false },
-    clientRegistrationOptions: { rateLimit: false },
-    revocationOptions: { rateLimit: false },
-  }),
-);
+// Mount OAuth endpoints only when auth is enabled
+if (AUTH_ENABLED) {
+  app.use(
+    mcpAuthRouter({
+      provider,
+      issuerUrl: ISSUER_URL,
+      authorizationOptions: { rateLimit: false },
+      tokenOptions: { rateLimit: false },
+      clientRegistrationOptions: { rateLimit: false },
+      revocationOptions: { rateLimit: false },
+    }),
+  );
+}
 
-const bearerAuth = requireBearerAuth({ verifier: provider });
+const authMiddleware: express.RequestHandler = AUTH_ENABLED
+  ? requireBearerAuth({ verifier: provider })
+  : (_req, _res, next) => next();
 
 // Track active transports by session ID for stateful connections
 const transports = new Map<string, StreamableHTTPServerTransport>();
@@ -50,7 +54,7 @@ app.get('/health', (_req, res) => {
  * MCP Streamable HTTP: POST handles initialization and all subsequent messages.
  * A new transport+server pair is created for each session on initialization.
  */
-app.post('/mcp', bearerAuth, async (req, res) => {
+app.post('/mcp', authMiddleware, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
   if (sessionId && transports.has(sessionId)) {
@@ -114,7 +118,7 @@ app.post('/mcp', bearerAuth, async (req, res) => {
 });
 
 /** MCP Streamable HTTP: GET opens an SSE stream for server-initiated messages. */
-app.get('/mcp', bearerAuth, async (req, res) => {
+app.get('/mcp', authMiddleware, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !transports.has(sessionId)) {
     res.status(400).json({ error: 'Invalid or missing session ID' });
@@ -137,7 +141,7 @@ app.get('/mcp', bearerAuth, async (req, res) => {
 });
 
 /** MCP Streamable HTTP: DELETE terminates a session. */
-app.delete('/mcp', bearerAuth, async (req, res) => {
+app.delete('/mcp', authMiddleware, async (req, res) => {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !transports.has(sessionId)) {
     res.status(400).json({ error: 'Invalid or missing session ID' });
@@ -164,6 +168,7 @@ const cache = new Cache();
 
 const server = app.listen(PORT, () => {
   console.warn(`Food Tracking AI MCP server listening on port ${PORT}`);
+  console.warn(`Authentication: ${AUTH_ENABLED ? 'enabled' : 'disabled'}`);
   console.warn(`Health check: http://localhost:${PORT}/health`);
   console.warn(`MCP endpoint: http://localhost:${PORT}/mcp`);
 });

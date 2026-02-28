@@ -30,4 +30,5 @@ provider "aws" {
 
 locals {
   name_prefix = "food-tracking"
+  has_domain  = var.domain_name != null
 }

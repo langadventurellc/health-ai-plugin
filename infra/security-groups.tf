@@ -22,6 +22,7 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
+  count             = local.has_domain ? 1 : 0
   security_group_id = aws_security_group.alb.id
   description       = "HTTPS from internet"
   from_port         = 443
@@ -32,7 +33,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https" {
 
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   security_group_id = aws_security_group.alb.id
-  description       = "HTTP from internet (redirected to HTTPS)"
+  description       = "HTTP from internet"
   from_port         = 80
   to_port           = 80
   ip_protocol       = "tcp"
