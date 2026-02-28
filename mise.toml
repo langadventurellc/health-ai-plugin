@@ -60,3 +60,7 @@ description = "Run all quality checks (lint, format, type-check)"
 depends = ["lint", "format", "type-check"]
 run = "echo 'All quality checks passed'"
 dir = "server"
+
+[tasks.deploy]
+description = "Open GitHub Actions deploy workflow in browser"
+run = "open \"$(gh browse --no-browser -n)/actions/workflows/deploy.yml\""

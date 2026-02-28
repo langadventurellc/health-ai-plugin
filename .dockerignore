@@ -1,0 +1,72 @@
+# Dependencies (installed fresh in Docker build)
+node_modules/
+server/node_modules/
+
+# Build output (compiled fresh in Docker build)
+dist/
+server/dist/
+
+# Git
+.git/
+.gitignore
+
+# Environment files (secrets must not be in the image)
+.env
+.env.*
+server/.env
+server/.env.*
+
+# Documentation
+*.md
+LICENSE
+
+# Trellis issue tracking
+.trellis/
+
+# Plugin (not needed for server image)
+plugin/
+
+# IDE and editor configs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Husky git hooks
+.husky/
+
+# Claude config
+.claude/
+
+# Root package files (only server/ package is needed)
+package.json
+package-lock.json
+
+# Linting and formatting configs (not needed at runtime)
+eslint.config.mjs
+.prettierrc
+.prettierignore
+
+# Mise config
+mise.toml
+
+# Test files
+server/src/**/__tests__/
+server/src/**/*.test.ts
+server/src/**/*.spec.ts
+server/vitest.config.ts
+
+# SQLite database files
+*.db
+*.sqlite
+*.sqlite3
+server/data/
+
+# Logs
+logs/
+*.log
+npm-debug.log*

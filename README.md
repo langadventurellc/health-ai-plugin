@@ -77,6 +77,14 @@ mise run format             # Prettier --write
 mise run type-check         # tsc --noEmit
 ```
 
+### Deployment
+
+The server deploys to AWS ECS Fargate via a GitHub Actions workflow (manual trigger). See [`infra/README.md`](infra/README.md) for full setup instructions including Terraform provisioning, GitHub Actions variable configuration, and operational commands.
+
+```bash
+mise run deploy            # Opens the deploy workflow in GitHub
+```
+
 ## Status
 
 In active development. The MCP server core is implemented with `search_food`, `get_nutrition`, `calculate_meal`, and `save_food` tools, SQLite caching, and USDA/Open Food Facts integration. See [REQUIREMENTS.md](REQUIREMENTS.md) for the full specification.
@@ -91,10 +99,7 @@ In active development. The MCP server core is implemented with `search_food`, `g
 - Custom food storage (`save_food`) for restaurant items and nutrition labels, with 90-day TTL and upsert semantics
 - MCP OAuth 2.1 authentication with PKCE, dynamic client registration, and bearer token middleware
 - Claude Code plugin with `nutrition-tracker` skill (see `plugin/README.md` for setup)
-
-**Planned:**
-
-- AWS deployment
+- AWS deployment on ECS Fargate with HTTPS, EFS persistence, and GitHub Actions CI/CD (see [`infra/README.md`](infra/README.md))
 
 ## License
 

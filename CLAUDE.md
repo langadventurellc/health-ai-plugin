@@ -117,6 +117,7 @@ mise run lint        # ESLint --fix, alias: mise run l
 mise run format      # Prettier --write, alias: mise run f
 mise run type-check  # tsc --noEmit, alias: mise run tc
 mise run quality     # All quality checks (lint + format + type-check)
+mise run deploy      # Open GitHub Actions deploy workflow in browser
 ```
 
 Equivalent npm scripts exist in `server/package.json` (`npm run dev`, `npm run build`, `npm test`, `npm run lint`, `npm run format`).
@@ -128,6 +129,20 @@ Equivalent npm scripts exist in `server/package.json` (`npm run dev`, `npm run b
 - `GET /mcp` -- SSE stream for server-initiated messages (requires bearer token)
 - `DELETE /mcp` -- session termination (requires bearer token)
 - OAuth 2.1 endpoints auto-mounted by MCP SDK's `mcpAuthRouter` (authorization, token, registration, `.well-known/oauth-authorization-server`)
+
+## Deployment
+
+The server runs on **AWS ECS Fargate** behind an ALB with HTTPS. SQLite persistence uses EFS. Deployments are triggered manually via a GitHub Actions workflow (`mise run deploy`).
+
+- **Dockerfile** (repo root) -- Multi-stage build: compile TypeScript, install production deps with `better-sqlite3` native addon, run as non-root `node` user.
+- **Infrastructure** (`infra/`) -- Terraform (VPC, ECS, EFS, ALB/ACM, ECR, Secrets Manager, GitHub Actions OIDC). See [`infra/README.md`](infra/README.md) for setup, variable mapping, and operations.
+- **CI/CD** (`.github/workflows/deploy.yml`) -- Manual trigger, OIDC auth (no stored AWS credentials), build+push to ECR, ECS rolling deploy, health check verification.
+
+### Guardrails
+
+- Ask before modifying Terraform files, the Dockerfile, or GitHub Actions workflows.
+- Never commit `terraform.tfvars` (contains secrets; gitignored).
+- Never hardcode AWS credentials or secrets -- use Secrets Manager and OIDC.
 
 ## Code Quality
 
