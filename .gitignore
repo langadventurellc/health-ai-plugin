@@ -30,8 +30,5 @@ logs/
 *.log
 npm-debug.log*
 
-# Trellis (local task tracking)
-.trellis/
-
-# Claude auto-memory
-.claude/
+CLAUDE.local.md
+.env.local*
