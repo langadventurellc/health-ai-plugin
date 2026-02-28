@@ -5,7 +5,6 @@ import { UsdaClient } from '../../clients/usda.js';
 import { OpenFoodFactsClient } from '../../clients/openfoodfacts.js';
 import type { NutritionData } from '../../types.js';
 import {
-  toGrams,
   scaleNutrient,
   scaleNutrients,
   handleGetNutrition,
@@ -31,6 +30,67 @@ const CHICKEN_NUTRITION: NutritionData = {
   },
 };
 
+const MILK_NUTRITION: NutritionData = {
+  foodId: '171265',
+  source: 'usda',
+  name: 'Milk, whole, 3.25% milkfat',
+  servingSize: { amount: 100, unit: 'g' },
+  densityGPerMl: 1.03,
+  portions: [
+    { portionDescription: '1 cup', gramWeight: 244, amount: 1 },
+    { portionDescription: '1 tbsp', gramWeight: 15, amount: 1 },
+  ],
+  nutrients: {
+    calories: { value: 61, available: true },
+    protein_g: { value: 3.15, available: true },
+    total_carbs_g: { value: 4.78, available: true },
+    total_fat_g: { value: 3.27, available: true },
+    fiber_g: { value: 0, available: true },
+    sugar_g: { value: 5.05, available: true },
+    saturated_fat_g: { value: 1.87, available: true },
+    sodium_mg: { value: 43, available: true },
+    cholesterol_mg: { value: 14, available: true },
+  },
+};
+
+const BANANA_NUTRITION: NutritionData = {
+  foodId: '173944',
+  source: 'usda',
+  name: 'Bananas, raw',
+  servingSize: { amount: 100, unit: 'g' },
+  portions: [
+    {
+      portionDescription: '1 medium (7" to 7-7/8" long)',
+      modifier: 'medium',
+      gramWeight: 118,
+      amount: 1,
+    },
+    {
+      portionDescription: '1 large (8" to 8-7/8" long)',
+      modifier: 'large',
+      gramWeight: 136,
+      amount: 1,
+    },
+    {
+      portionDescription: '1 small (6" to 6-7/8" long)',
+      modifier: 'small',
+      gramWeight: 101,
+      amount: 1,
+    },
+  ],
+  nutrients: {
+    calories: { value: 89, available: true },
+    protein_g: { value: 1.09, available: true },
+    total_carbs_g: { value: 22.84, available: true },
+    total_fat_g: { value: 0.33, available: true },
+    fiber_g: { value: 2.6, available: true },
+    sugar_g: { value: 12.23, available: true },
+    saturated_fat_g: { value: 0.112, available: true },
+    sodium_mg: { value: 1, available: true },
+    cholesterol_mg: { value: 0, available: true },
+  },
+};
+
 let cache: Cache;
 
 beforeEach(() => {
@@ -42,31 +102,6 @@ beforeEach(() => {
 afterEach(() => {
   closeDatabase();
   vi.restoreAllMocks();
-});
-
-describe('toGrams', () => {
-  it('converts grams (no-op)', () => {
-    expect(toGrams(150, 'g')).toBe(150);
-  });
-
-  it('converts kilograms', () => {
-    expect(toGrams(1, 'kg')).toBe(1000);
-    expect(toGrams(0.5, 'kg')).toBe(500);
-  });
-
-  it('converts ounces', () => {
-    expect(toGrams(1, 'oz')).toBeCloseTo(28.3495, 3);
-    expect(toGrams(4, 'oz')).toBeCloseTo(113.398, 3);
-  });
-
-  it('converts pounds', () => {
-    expect(toGrams(1, 'lb')).toBeCloseTo(453.592, 3);
-    expect(toGrams(0.5, 'lb')).toBeCloseTo(226.796, 3);
-  });
-
-  it('throws for unsupported units', () => {
-    expect(() => toGrams(1, 'cup')).toThrow('Unsupported unit: cup');
-  });
 });
 
 describe('scaleNutrient', () => {
@@ -250,5 +285,68 @@ describe('handleGetNutrition', () => {
     expect(result.warnings!.some((w) => w.includes('cached data'))).toBe(true);
     // Data should still be correct
     expect(result.nutrients.calories).toEqual({ value: 165, available: true });
+  });
+
+  it('converts volume unit using density data', async () => {
+    cache.setNutrition('usda', '171265', MILK_NUTRITION);
+
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    const result = await handleGetNutrition(
+      { usda, off },
+      { foodId: '171265', source: 'usda', amount: 1, unit: 'cup' },
+    );
+
+    expect(result.servingDescription).toBe(
+      '1 cup of Milk, whole, 3.25% milkfat',
+    );
+    // 1 cup = 236.588 mL * 1.03 g/mL = 243.686g
+    // calories: 61 * (243.686/100) = 148.6
+    expect(result.nutrients.calories.value).toBeCloseTo(148.6, 0);
+  });
+
+  it('throws when volume unit is used on food without density data', async () => {
+    cache.setNutrition('usda', '171705', CHICKEN_NUTRITION);
+
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    await expect(
+      handleGetNutrition(
+        { usda, off },
+        { foodId: '171705', source: 'usda', amount: 1, unit: 'cup' },
+      ),
+    ).rejects.toThrow('density data');
+  });
+
+  it('converts descriptive unit using portion data', async () => {
+    cache.setNutrition('usda', '173944', BANANA_NUTRITION);
+
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    const result = await handleGetNutrition(
+      { usda, off },
+      { foodId: '173944', source: 'usda', amount: 1, unit: 'medium' },
+    );
+
+    expect(result.servingDescription).toBe('1 medium Bananas, raw');
+    // 1 medium banana = 118g; calories: 89 * (118/100) = 105.0
+    expect(result.nutrients.calories.value).toBeCloseTo(105, 0);
+  });
+
+  it('throws when descriptive unit is used on food without portion data', async () => {
+    cache.setNutrition('usda', '171705', CHICKEN_NUTRITION);
+
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    await expect(
+      handleGetNutrition(
+        { usda, off },
+        { foodId: '171705', source: 'usda', amount: 1, unit: 'medium' },
+      ),
+    ).rejects.toThrow('no portion data available');
   });
 });

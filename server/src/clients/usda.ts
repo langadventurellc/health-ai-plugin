@@ -1,4 +1,5 @@
 import type { Cache } from '../cache/cache.js';
+import type { PortionData } from '../conversion/types.js';
 import type {
   NutritionData,
   FoodSearchResult,
@@ -8,6 +9,7 @@ import type {
 const USDA_BASE_URL = 'https://api.nal.usda.gov/fdc/v1';
 const HTTP_TIMEOUT_MS = 10_000;
 const MAX_SEARCH_RESULTS = 15;
+const ML_PER_CUP = 236.588;
 
 /** Maps USDA nutrient IDs to our normalized nutrient keys. */
 const NUTRIENT_ID_MAP: Record<number, string> = {
@@ -54,10 +56,20 @@ interface UsdaFoodNutrient {
   amount?: number;
 }
 
+interface UsdaFoodPortion {
+  id: number;
+  amount: number;
+  gramWeight: number;
+  portionDescription?: string;
+  modifier?: string;
+  measureUnit?: { name: string };
+}
+
 interface UsdaFoodDetailResponse {
   fdcId: number;
   description: string;
   foodNutrients: UsdaFoodNutrient[];
+  foodPortions?: UsdaFoodPortion[];
 }
 
 /** Normalizes a USDA search response into FoodSearchResult[]. */
@@ -71,6 +83,34 @@ export function normalizeSearchResults(
     brand: food.brandOwner ?? food.brandName ?? null,
     matchScore: food.score ?? 0,
   }));
+}
+
+/** Parses USDA food portions into PortionData and derives density when a cup portion exists. */
+function extractPortionData(rawPortions: UsdaFoodPortion[]): {
+  portions: PortionData[];
+  densityGPerMl: number | undefined;
+} {
+  const portions: PortionData[] = rawPortions
+    .filter((p) => p.gramWeight > 0)
+    .map((p) => ({
+      portionDescription:
+        p.portionDescription ?? p.measureUnit?.name ?? 'unknown',
+      modifier: p.modifier,
+      gramWeight: p.gramWeight,
+      amount: p.amount,
+    }));
+
+  // Derive density from a "1 cup" portion if available
+  let densityGPerMl: number | undefined;
+  const cupPortion = portions.find(
+    (p) =>
+      p.amount === 1 && /\bcups?\b/.test(p.portionDescription.toLowerCase()),
+  );
+  if (cupPortion) {
+    densityGPerMl = cupPortion.gramWeight / ML_PER_CUP;
+  }
+
+  return { portions, densityGPerMl };
 }
 
 /** Normalizes a USDA food detail response into NutritionData. */
@@ -105,13 +145,25 @@ export function normalizeNutrition(
     // Required nutrients already initialized above with available: false
   }
 
-  return {
+  const result: NutritionData = {
     foodId: String(data.fdcId),
     source: 'usda',
     name: data.description,
     servingSize: { amount: 100, unit: 'g' },
     nutrients,
   };
+
+  if (data.foodPortions && data.foodPortions.length > 0) {
+    const { portions, densityGPerMl } = extractPortionData(data.foodPortions);
+    if (portions.length > 0) {
+      result.portions = portions;
+    }
+    if (densityGPerMl != null) {
+      result.densityGPerMl = densityGPerMl;
+    }
+  }
+
+  return result;
 }
 
 /** USDA FoodData Central API client with cache-through reads. */

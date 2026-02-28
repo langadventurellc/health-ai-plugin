@@ -181,6 +181,100 @@ describe('normalizeNutrition', () => {
       available: true,
     });
   });
+
+  it('extracts portion data from foodPortions', () => {
+    const result = normalizeNutrition({
+      ...FOOD_DETAIL_RESPONSE,
+      foodPortions: [
+        {
+          id: 1,
+          amount: 1,
+          gramWeight: 118,
+          portionDescription: '1 medium (7" to 7-7/8" long)',
+          modifier: 'medium',
+        },
+        {
+          id: 2,
+          amount: 1,
+          gramWeight: 136,
+          portionDescription: '1 large (8" to 8-7/8" long)',
+          modifier: 'large',
+        },
+        {
+          id: 3,
+          amount: 1,
+          gramWeight: 0,
+          portionDescription: '1 empty',
+          modifier: 'empty',
+        },
+      ],
+    });
+
+    // Zero gram-weight portions are filtered out
+    expect(result.portions).toHaveLength(2);
+    expect(result.portions![0]).toEqual({
+      portionDescription: '1 medium (7" to 7-7/8" long)',
+      modifier: 'medium',
+      gramWeight: 118,
+      amount: 1,
+    });
+    expect(result.portions![1]).toEqual({
+      portionDescription: '1 large (8" to 8-7/8" long)',
+      modifier: 'large',
+      gramWeight: 136,
+      amount: 1,
+    });
+    // No cup portion, so no density
+    expect(result.densityGPerMl).toBeUndefined();
+  });
+
+  it('derives density from a cup portion', () => {
+    const result = normalizeNutrition({
+      ...FOOD_DETAIL_RESPONSE,
+      foodPortions: [
+        {
+          id: 1,
+          amount: 1,
+          gramWeight: 244,
+          portionDescription: '1 cup',
+        },
+        {
+          id: 2,
+          amount: 1,
+          gramWeight: 15,
+          portionDescription: '1 tbsp',
+        },
+      ],
+    });
+
+    expect(result.portions).toHaveLength(2);
+    // density = 244 / 236.588 ~= 1.0313
+    expect(result.densityGPerMl).toBeCloseTo(1.0313, 3);
+  });
+
+  it('does not derive density from a non-cup description containing "cup"', () => {
+    const result = normalizeNutrition({
+      ...FOOD_DETAIL_RESPONSE,
+      foodPortions: [
+        {
+          id: 1,
+          amount: 1,
+          gramWeight: 55,
+          portionDescription: '1 cupcake',
+        },
+      ],
+    });
+
+    expect(result.portions).toHaveLength(1);
+    expect(result.densityGPerMl).toBeUndefined();
+  });
+
+  it('omits portions and density when foodPortions is absent', () => {
+    const result = normalizeNutrition(FOOD_DETAIL_RESPONSE);
+
+    expect(result.portions).toBeUndefined();
+    expect(result.densityGPerMl).toBeUndefined();
+  });
 });
 
 describe('UsdaClient cache integration', () => {

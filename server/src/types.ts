@@ -1,3 +1,5 @@
+import type { PortionData } from './conversion/types.js';
+
 /** Data source for food items. */
 export type FoodSource = 'usda' | 'openfoodfacts' | 'custom';
 
@@ -31,6 +33,8 @@ export interface NutritionData {
   source: FoodSource;
   name: string;
   servingSize: { amount: number; unit: string };
+  portions?: PortionData[];
+  densityGPerMl?: number;
   nutrients: {
     calories: NutrientValue;
     protein_g: NutrientValue;
@@ -58,4 +62,14 @@ export interface NutrientBreakdown {
 export interface NutritionResult {
   servingDescription: string;
   nutrients: NutrientBreakdown;
+}
+
+/** Returns the least-fresh value: stale > cache > live. */
+export function leastFresh(a: DataFreshness, b: DataFreshness): DataFreshness {
+  const rank: Record<DataFreshness, number> = {
+    live: 0,
+    cache: 1,
+    stale: 2,
+  };
+  return rank[a] >= rank[b] ? a : b;
 }
