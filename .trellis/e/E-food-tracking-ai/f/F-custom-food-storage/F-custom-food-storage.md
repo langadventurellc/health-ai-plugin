@@ -1,15 +1,70 @@
 ---
 id: F-custom-food-storage
 title: Custom Food Storage
-status: open
+status: done
 priority: medium
 parent: E-food-tracking-ai
 prerequisites:
   - F-mcp-server-core-and-food-data
-affectedFiles: {}
-log: []
+affectedFiles:
+  server/src/types.ts: Added StorageMode type ('per-100g' | 'per-serving') and
+    optional storageMode field to NutritionData interface
+  server/src/clients/types.ts: Re-exported StorageMode type from ../types.ts
+  server/src/cache/db.ts:
+    Added custom_foods table with id, name, brand, category,
+    data, created_at, expires_at columns and case-insensitive indexes on name
+    and brand
+  server/src/clients/custom-store.ts: 'New module: CustomFoodStore class with
+    save(), get(), search() methods; SaveFoodInput interface;
+    generateCustomFoodId helper; per-100g normalization for weight-based
+    servings'
+  server/src/clients/__tests__/custom-store.test.ts: 'New test file: 16 tests
+    covering ID generation, save/retrieve round-trip, upsert behavior, TTL
+    expiration, search by name/brand, per-100g normalization, and per-serving
+    storage'
+  server/src/tools/save-food.ts: 'New file: save_food tool handler with
+    validateNutrients validation and handleSaveFood function that delegates to
+    CustomFoodStore.save()'
+  server/src/server.ts: Added CustomFoodStore import and instantiation in
+    createMcpServer, added store to ToolDeps interface, registered save_food
+    tool with Zod input schema; Updated all three handler calls
+    (handleSearchFood, handleGetNutrition, handleCalculateMeal) to pass
+    deps.store.
+  server/src/tools/__tests__/save-food.test.ts: 'New file: 4 unit tests covering
+    successful save, negative calorie validation, NaN validation, and upsert
+    behavior'
+  server/src/tools/search-food.ts: Added CustomFoodStore import and store to
+    SearchFoodDeps. When source='all', custom foods are searched fresh via
+    store.search() and prepended to results, both when hitting cache and when
+    fetching live USDA/OFF results. Custom foods skip cross-source
+    deduplication.
+  server/src/tools/get-nutrition.ts: "Added CustomFoodStore import and store to
+    GetNutritionDeps. Added scalePerServing() for per-serving custom foods
+    (ratio-based scaling with unit validation). Replaced the 'Unsupported
+    source: custom' error with actual custom food retrieval supporting both
+    per-100g and per-serving storage modes."
+  server/src/tools/calculate-meal.ts: Added CustomFoodStore import and store to
+    CalculateMealDeps, enabling handleGetNutrition to receive the store
+    dependency transitively.
+  server/src/tools/__tests__/search-food.test.ts: "Added CustomFoodStore to
+    imports and deps. Added 3 tests: custom foods appear in source='all'
+    results, excluded from source-specific searches, and appear even when
+    USDA/OFF results come from cache."
+  server/src/tools/__tests__/get-nutrition.test.ts: "Added CustomFoodStore to
+    imports and deps. Replaced 'throws for custom source' test with 5 new tests:
+    per-100g custom food scaling, per-100g with different weight unit,
+    per-serving ratio scaling, incompatible unit error for per-serving foods,
+    and custom food not found error."
+  server/src/tools/__tests__/calculate-meal.test.ts: 'Added CustomFoodStore to
+    imports and deps (via makeDeps). Added 1 test: meal with mixed USDA and
+    custom food items computes correct totals.'
+log:
+  - 'Auto-completed: All child tasks are complete'
 schema: v1.0
-childrenIds: []
+childrenIds:
+  - T-implement-custom-food-sqlite
+  - T-implement-save-food-mcp-tool
+  - T-integrate-custom-foods-with
 created: 2026-02-28T16:57:51.986Z
 updated: 2026-02-28T16:57:51.986Z
 ---

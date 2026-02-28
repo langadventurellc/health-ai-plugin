@@ -3,6 +3,7 @@ import { Cache } from '../../cache/cache.js';
 import { initializeDatabase, closeDatabase } from '../../cache/db.js';
 import { UsdaClient } from '../../clients/usda.js';
 import { OpenFoodFactsClient } from '../../clients/openfoodfacts.js';
+import { CustomFoodStore } from '../../clients/custom-store.js';
 import type { NutritionData } from '../../types.js';
 import { handleCalculateMeal } from '../calculate-meal.js';
 
@@ -51,11 +52,13 @@ const MYSTERY_FOOD: NutritionData = {
 };
 
 let cache: Cache;
+let store: CustomFoodStore;
 
 beforeEach(() => {
   closeDatabase();
   initializeDatabase(':memory:');
   cache = new Cache();
+  store = new CustomFoodStore();
 });
 
 afterEach(() => {
@@ -67,6 +70,7 @@ function makeDeps() {
   return {
     usda: new UsdaClient(cache, 'test-key'),
     off: new OpenFoodFactsClient(cache),
+    store,
   };
 }
 
@@ -249,5 +253,42 @@ describe('handleCalculateMeal', () => {
     for (const coverage of Object.values(result.nutrientCoverage)) {
       expect(coverage).toBe('full');
     }
+  });
+
+  it('computes totals for a meal with USDA and custom food items', async () => {
+    cache.setNutrition('usda', '171705', CHICKEN_NUTRITION);
+
+    // Save a custom food (per-serving, piece-based)
+    const { id: customId } = store.save({
+      name: 'Dinner Roll',
+      servingSize: { amount: 1, unit: 'piece' },
+      nutrients: {
+        calories: 110,
+        protein_g: 3,
+        total_carbs_g: 19,
+        total_fat_g: 2,
+      },
+    });
+
+    const result = await handleCalculateMeal(makeDeps(), {
+      items: [
+        { foodId: '171705', source: 'usda', amount: 200, unit: 'g' },
+        { foodId: customId, source: 'custom', amount: 2, unit: 'piece' },
+      ],
+    });
+
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0].source).toBe('usda');
+    expect(result.items[1].source).toBe('custom');
+
+    // Chicken 200g: calories = 165 * 2 = 330
+    // 2 rolls: calories = 110 * 2 = 220
+    // Total: 550
+    expect(result.totals.calories).toEqual({ value: 550, available: true });
+
+    // Chicken 200g: protein = 31 * 2 = 62
+    // 2 rolls: protein = 3 * 2 = 6
+    // Total: 68
+    expect(result.totals.protein_g).toEqual({ value: 68, available: true });
   });
 });

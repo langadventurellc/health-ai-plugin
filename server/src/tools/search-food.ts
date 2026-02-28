@@ -1,5 +1,6 @@
 import type { UsdaClient } from '../clients/usda.js';
 import type { OpenFoodFactsClient } from '../clients/openfoodfacts.js';
+import type { CustomFoodStore } from '../clients/custom-store.js';
 import type { Cache } from '../cache/cache.js';
 import {
   leastFresh,
@@ -11,6 +12,7 @@ interface SearchFoodDeps {
   usda: UsdaClient;
   off: OpenFoodFactsClient;
   cache: Cache;
+  store: CustomFoodStore;
 }
 
 interface SearchFoodParams {
@@ -156,7 +158,12 @@ export async function handleSearchFood(
       | FoodSearchResult[]
       | null;
     if (cached) {
-      return { results: cached, dataFreshness: 'cache' };
+      // Always search custom foods fresh (local SQLite, not an API call)
+      const customResults = deps.store.search(query);
+      return {
+        results: [...customResults, ...cached],
+        dataFreshness: 'cache',
+      };
     }
   }
 
@@ -187,10 +194,16 @@ export async function handleSearchFood(
 
   const warnings = [...usda.warnings, ...off.warnings];
   const freshness = leastFresh(usda.freshness, off.freshness);
-  const results = deduplicateResults(usda.results, off.results);
+  const deduplicated = deduplicateResults(usda.results, off.results);
 
-  // Cache the combined results
-  deps.cache.setSearchResults('all', query, results);
+  // Cache the combined USDA/OFF results (custom foods are always searched fresh)
+  deps.cache.setSearchResults('all', query, deduplicated);
+
+  // Always search custom foods fresh -- they are local SQLite, not an API call,
+  // and must appear immediately after being saved without waiting for cache expiry.
+  // Custom foods do not participate in cross-source deduplication.
+  const customResults = deps.store.search(query);
+  const results = [...customResults, ...deduplicated];
 
   const response: SearchFoodResponse = { results };
   if (freshness !== 'live') {

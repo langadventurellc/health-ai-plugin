@@ -3,6 +3,7 @@ export type {
   FoodSearchResult,
   NutrientValue,
   NutritionData,
+  StorageMode,
   DataFreshness,
   CacheableResult,
 } from '../types.js';

@@ -1,5 +1,6 @@
 import type { UsdaClient } from '../clients/usda.js';
 import type { OpenFoodFactsClient } from '../clients/openfoodfacts.js';
+import type { CustomFoodStore } from '../clients/custom-store.js';
 import {
   leastFresh,
   type FoodSource,
@@ -12,6 +13,7 @@ import { handleGetNutrition, type NutritionUnit } from './get-nutrition.js';
 interface CalculateMealDeps {
   usda: UsdaClient;
   off: OpenFoodFactsClient;
+  store: CustomFoodStore;
 }
 
 interface MealItem {

@@ -50,6 +50,19 @@ export function initializeDatabase(
       created_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS custom_foods (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      brand      TEXT,
+      category   TEXT,
+      data       TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_custom_foods_name ON custom_foods(name COLLATE NOCASE);
+    CREATE INDEX IF NOT EXISTS idx_custom_foods_brand ON custom_foods(brand COLLATE NOCASE);
   `);
 
   return db;

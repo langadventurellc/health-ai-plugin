@@ -2,11 +2,14 @@ import { readFileSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Cache } from './cache/cache.js';
+import { getDatabase } from './cache/db.js';
+import { CustomFoodStore, type SaveFoodInput } from './clients/custom-store.js';
 import { UsdaClient } from './clients/usda.js';
 import { OpenFoodFactsClient } from './clients/openfoodfacts.js';
 import { handleSearchFood } from './tools/search-food.js';
 import { handleGetNutrition } from './tools/get-nutrition.js';
 import { handleCalculateMeal } from './tools/calculate-meal.js';
+import { handleSaveFood } from './tools/save-food.js';
 
 const pkg: { version: string } = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
@@ -21,8 +24,9 @@ export function createMcpServer(cache: Cache): McpServer {
 
   const usda = new UsdaClient(cache);
   const off = new OpenFoodFactsClient(cache);
+  const store = new CustomFoodStore(getDatabase());
 
-  registerTools(server, { usda, off, cache });
+  registerTools(server, { usda, off, cache, store });
 
   return server;
 }
@@ -31,6 +35,7 @@ interface ToolDeps {
   usda: UsdaClient;
   off: OpenFoodFactsClient;
   cache: Cache;
+  store: CustomFoodStore;
 }
 
 function registerTools(server: McpServer, deps: ToolDeps): void {
@@ -51,7 +56,12 @@ function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ query, source }) => {
       try {
         const response = await handleSearchFood(
-          { usda: deps.usda, off: deps.off, cache: deps.cache },
+          {
+            usda: deps.usda,
+            off: deps.off,
+            cache: deps.cache,
+            store: deps.store,
+          },
           { query, source },
         );
         return {
@@ -117,7 +127,7 @@ function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ foodId, source, amount, unit }) => {
       try {
         const result = await handleGetNutrition(
-          { usda: deps.usda, off: deps.off },
+          { usda: deps.usda, off: deps.off, store: deps.store },
           { foodId, source, amount, unit },
         );
         return {
@@ -188,7 +198,7 @@ function registerTools(server: McpServer, deps: ToolDeps): void {
     async ({ items }) => {
       try {
         const result = await handleCalculateMeal(
-          { usda: deps.usda, off: deps.off },
+          { usda: deps.usda, off: deps.off, store: deps.store },
           { items },
         );
         return {
@@ -204,6 +214,119 @@ function registerTools(server: McpServer, deps: ToolDeps): void {
           error instanceof Error
             ? error.message
             : 'Unknown error calculating meal nutrition';
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({ error: message }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  server.registerTool(
+    'save_food',
+    {
+      description:
+        'Save custom food nutrition data (from restaurant lookups, nutrition labels, etc.) for consistent future retrieval. If a food with the same name and brand already exists, it will be updated.',
+      inputSchema: {
+        name: z.string().min(1).describe('Name of the food item'),
+        brand: z.string().optional().describe('Brand or restaurant name'),
+        category: z
+          .string()
+          .optional()
+          .describe('Food category (e.g., "fast food", "bakery")'),
+        servingSize: z
+          .object({
+            amount: z.number().positive().describe('Serving size amount'),
+            unit: z
+              .string()
+              .describe('Serving size unit (e.g., "g", "cup", "piece")'),
+          })
+          .describe('The serving size that the nutrient values correspond to'),
+        nutrients: z
+          .object({
+            calories: z
+              .number()
+              .finite()
+              .nonnegative()
+              .describe('Calories (kcal)'),
+            protein_g: z
+              .number()
+              .finite()
+              .nonnegative()
+              .describe('Protein in grams'),
+            total_carbs_g: z
+              .number()
+              .finite()
+              .nonnegative()
+              .describe('Total carbohydrates in grams'),
+            total_fat_g: z
+              .number()
+              .finite()
+              .nonnegative()
+              .describe('Total fat in grams'),
+            fiber_g: z
+              .number()
+              .finite()
+              .nonnegative()
+              .optional()
+              .describe('Dietary fiber in grams'),
+            sugar_g: z
+              .number()
+              .finite()
+              .nonnegative()
+              .optional()
+              .describe('Sugar in grams'),
+            saturated_fat_g: z
+              .number()
+              .finite()
+              .nonnegative()
+              .optional()
+              .describe('Saturated fat in grams'),
+            sodium_mg: z
+              .number()
+              .finite()
+              .nonnegative()
+              .optional()
+              .describe('Sodium in milligrams'),
+            cholesterol_mg: z
+              .number()
+              .finite()
+              .nonnegative()
+              .optional()
+              .describe('Cholesterol in milligrams'),
+          })
+          .passthrough()
+          .describe('Nutrient values for the specified serving size'),
+      },
+    },
+    async ({ name, brand, category, servingSize, nutrients }) => {
+      try {
+        const result = await handleSaveFood(
+          { store: deps.store },
+          {
+            name,
+            brand,
+            category,
+            servingSize,
+            nutrients: nutrients as SaveFoodInput['nutrients'],
+          },
+        );
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify(result),
+            },
+          ],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown error saving food';
         return {
           content: [
             {

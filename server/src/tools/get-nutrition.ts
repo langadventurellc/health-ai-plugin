@@ -1,5 +1,6 @@
 import type { UsdaClient } from '../clients/usda.js';
 import type { OpenFoodFactsClient } from '../clients/openfoodfacts.js';
+import type { CustomFoodStore } from '../clients/custom-store.js';
 import {
   convertToGrams,
   isWeightUnit,
@@ -16,6 +17,7 @@ import type {
 interface GetNutritionDeps {
   usda: UsdaClient;
   off: OpenFoodFactsClient;
+  store: CustomFoodStore;
 }
 
 /** All unit types accepted by get_nutrition. */
@@ -107,6 +109,48 @@ function buildServingDescription(
   return `${amount} ${unit} of ${name}`;
 }
 
+/** Scales nutrients for per-serving custom foods by ratio of requested to stored serving. */
+function scalePerServing(
+  data: NutritionData,
+  amount: number,
+  unit: string,
+): NutritionResult['nutrients'] {
+  const storedUnit = data.servingSize.unit;
+  if (unit !== storedUnit) {
+    throw new Error(
+      `Cannot convert "${unit}" to "${storedUnit}" for custom food "${data.name}". ` +
+        `This food was saved with a "${storedUnit}" serving size. ` +
+        `Please request in "${storedUnit}" units.`,
+    );
+  }
+
+  // Data is stored as per-1-unit; multiply by the requested amount.
+  const ratio = amount / data.servingSize.amount;
+  const scaled: Record<string, NutrientValue> = {};
+
+  for (const [key, nutrient] of Object.entries(data.nutrients)) {
+    if (nutrient !== undefined) {
+      if (!nutrient.available) {
+        scaled[key] = { value: 0, available: false };
+      } else {
+        scaled[key] = {
+          value: Math.round(nutrient.value * ratio * 10) / 10,
+          available: true,
+        };
+      }
+    }
+  }
+
+  const missing = REQUIRED_NUTRIENT_KEYS.filter((key) => !(key in scaled));
+  if (missing.length > 0) {
+    throw new Error(
+      `Nutrition data is malformed: missing required nutrients: ${missing.join(', ')}`,
+    );
+  }
+
+  return scaled as NutritionResult['nutrients'];
+}
+
 /** Handles the get_nutrition MCP tool call. */
 export async function handleGetNutrition(
   deps: GetNutritionDeps,
@@ -115,9 +159,32 @@ export async function handleGetNutrition(
   const { foodId, source, amount, unit } = params;
 
   if (source === 'custom') {
-    throw new Error(
-      `Unsupported source: ${source}. Custom foods are not yet supported.`,
+    const nutritionData = deps.store.get(foodId);
+    if (!nutritionData) {
+      throw new Error(
+        `Nutrition data not found for food ID "${foodId}" from source "${source}".`,
+      );
+    }
+
+    const isPerServing = nutritionData.storageMode === 'per-serving';
+    const nutrients = isPerServing
+      ? scalePerServing(nutritionData, amount, unit)
+      : scaleNutrients(
+          nutritionData,
+          convertToGrams(amount, unit, {
+            densityGPerMl: nutritionData.densityGPerMl,
+            portions: nutritionData.portions,
+          }),
+        );
+
+    const servingDescription = buildServingDescription(
+      amount,
+      unit,
+      nutritionData.name,
     );
+
+    // Custom foods are authoritative local data -- always "live"
+    return { servingDescription, nutrients };
   }
 
   const client = source === 'usda' ? deps.usda : deps.off;
