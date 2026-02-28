@@ -27,12 +27,16 @@ export interface NutrientValue {
   available: boolean;
 }
 
+/** How nutrient values are stored: per 100g (weight-based) or per serving unit. */
+export type StorageMode = 'per-100g' | 'per-serving';
+
 /** Normalized nutrition data returned by API clients and stored in cache. */
 export interface NutritionData {
   foodId: string;
   source: FoodSource;
   name: string;
   servingSize: { amount: number; unit: string };
+  storageMode?: StorageMode;
   portions?: PortionData[];
   densityGPerMl?: number;
   nutrients: {

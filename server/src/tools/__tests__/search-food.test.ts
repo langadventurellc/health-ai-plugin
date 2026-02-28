@@ -3,6 +3,7 @@ import { Cache } from '../../cache/cache.js';
 import { initializeDatabase, closeDatabase } from '../../cache/db.js';
 import { UsdaClient } from '../../clients/usda.js';
 import { OpenFoodFactsClient } from '../../clients/openfoodfacts.js';
+import { CustomFoodStore } from '../../clients/custom-store.js';
 import type { FoodSearchResult } from '../../types.js';
 import {
   normalizeName,
@@ -63,11 +64,13 @@ const OFF_RESULTS: FoodSearchResult[] = [
 ];
 
 let cache: Cache;
+let store: CustomFoodStore;
 
 beforeEach(() => {
   closeDatabase();
   initializeDatabase(':memory:');
   cache = new Cache();
+  store = new CustomFoodStore();
 });
 
 afterEach(() => {
@@ -210,7 +213,7 @@ describe('handleSearchFood', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const response = await handleSearchFood(
-      { usda, off, cache },
+      { usda, off, cache, store },
       { query: 'apple', source: 'usda' },
     );
 
@@ -252,7 +255,7 @@ describe('handleSearchFood', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const response = await handleSearchFood(
-      { usda, off, cache },
+      { usda, off, cache, store },
       { query: 'apple', source: 'all' },
     );
 
@@ -288,12 +291,120 @@ describe('handleSearchFood', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const response = await handleSearchFood(
-      { usda, off, cache },
+      { usda, off, cache, store },
       { query: 'cached query', source: 'all' },
     );
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(response.results).toEqual(cachedResults);
+    // Cached USDA/OFF results should still be present
+    expect(response.results).toEqual(expect.arrayContaining(cachedResults));
     expect(response.dataFreshness).toBe('cache');
+  });
+
+  it('includes custom foods in results when source is all', async () => {
+    store.save({
+      name: 'Homemade Granola',
+      servingSize: { amount: 100, unit: 'g' },
+      nutrients: {
+        calories: 450,
+        protein_g: 10,
+        total_carbs_g: 60,
+        total_fat_g: 18,
+      },
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ foods: [], totalHits: 0 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    const response = await handleSearchFood(
+      { usda, off, cache, store },
+      { query: 'granola', source: 'all' },
+    );
+
+    const customResults = response.results.filter((r) => r.source === 'custom');
+    expect(customResults).toHaveLength(1);
+    expect(customResults[0].name).toBe('Homemade Granola');
+  });
+
+  it('does not include custom foods when source is usda or openfoodfacts', async () => {
+    store.save({
+      name: 'Homemade Granola',
+      servingSize: { amount: 100, unit: 'g' },
+      nutrients: {
+        calories: 450,
+        protein_g: 10,
+        total_carbs_g: 60,
+        total_fat_g: 18,
+      },
+    });
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          foods: [{ fdcId: 1, description: 'Granola Bar', score: 100 }],
+          totalHits: 1,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    const usdaResponse = await handleSearchFood(
+      { usda, off, cache, store },
+      { query: 'granola', source: 'usda' },
+    );
+
+    expect(usdaResponse.results.every((r) => r.source !== 'custom')).toBe(true);
+  });
+
+  it('includes custom foods even when USDA/OFF results come from cache', async () => {
+    // Pre-populate combined cache
+    const cachedResults: FoodSearchResult[] = [
+      {
+        id: '1',
+        source: 'usda',
+        name: 'Granola Cereal',
+        brand: null,
+        matchScore: 100,
+      },
+    ];
+    cache.setSearchResults('all', 'granola', cachedResults);
+
+    // Save a custom food after cache was populated
+    store.save({
+      name: 'Homemade Granola',
+      servingSize: { amount: 100, unit: 'g' },
+      nutrients: {
+        calories: 450,
+        protein_g: 10,
+        total_carbs_g: 60,
+        total_fat_g: 18,
+      },
+    });
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    const response = await handleSearchFood(
+      { usda, off, cache, store },
+      { query: 'granola', source: 'all' },
+    );
+
+    // No API calls since USDA/OFF results come from cache
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // Should include both cached USDA results and fresh custom results
+    expect(response.results).toHaveLength(2);
+    expect(response.results.some((r) => r.source === 'custom')).toBe(true);
+    expect(response.results.some((r) => r.source === 'usda')).toBe(true);
   });
 });

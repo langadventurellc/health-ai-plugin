@@ -26,14 +26,22 @@ affectedFiles:
     unit types, updated description to mention volume and descriptive unit
     support; Imported handleCalculateMeal and registered calculate_meal tool
     with Zod schema (items array with min(1), each item has foodId, source,
-    amount, unit), following existing error handling pattern'
-  server/src/types.ts: 'Shared TypeScript interfaces: FoodSearchResult,
+    amount, unit), following existing error handling pattern; Added
+    CustomFoodStore import and instantiation in createMcpServer, added store to
+    ToolDeps interface, registered save_food tool with Zod input schema; Updated
+    all three handler calls (handleSearchFood, handleGetNutrition,
+    handleCalculateMeal) to pass deps.store.'
+  server/src/types.ts: "Shared TypeScript interfaces: FoodSearchResult,
     NutrientValue, NutrientBreakdown, NutritionResult; Added optional portions
-    (PortionData[]) and densityGPerMl fields to NutritionData interface'
+    (PortionData[]) and densityGPerMl fields to NutritionData interface; Added
+    StorageMode type ('per-100g' | 'per-serving') and optional storageMode field
+    to NutritionData interface"
   server/.env.example: 'Documents required env vars: USDA_API_KEY and PORT'
   server/src/cache/db.ts: 'Created database initialization module: singleton
     pattern, WAL mode, schema creation for nutrition_cache and search_cache
-    tables, configurable path via SQLITE_DB_PATH env var'
+    tables, configurable path via SQLITE_DB_PATH env var; Added custom_foods
+    table with id, name, brand, category, data, created_at, expires_at columns
+    and case-insensitive indexes on name and brand'
   server/src/cache/cache.ts:
     Created Cache class with get/set/stale operations for
     nutrition and search data, TTL constants, query normalization with SHA-256
@@ -45,7 +53,8 @@ affectedFiles:
     'Created shared types: NutritionData interface with
     foodId, source, name, servingSize, and nutrients map (NutrientValue with
     value+available flag). FoodSearchResult interface with id, source, name,
-    brand, matchScore.; Added re-export of PortionData from conversion/types.ts'
+    brand, matchScore.; Added re-export of PortionData from conversion/types.ts;
+    Re-exported StorageMode type from ../types.ts'
   server/src/clients/usda.ts: Created UsdaClient class with searchFoods and
     getNutrition methods. Includes USDA nutrient ID-to-key mapping,
     normalizeSearchResults and normalizeNutrition pure functions (exported for
@@ -66,24 +75,36 @@ affectedFiles:
     normalization with name filtering, result limit, nutrition normalization,
     sodium conversion, sparse/empty/undefined nutriments handling, cache
     hit/miss/stale integration, product-not-found handling.'
-  server/src/tools/search-food.ts: 'Created search_food tool handler with
+  server/src/tools/search-food.ts: "Created search_food tool handler with
     deduplication logic: normalizeName, wordOverlap, isDuplicate,
     deduplicateResults, and handleSearchFood. Searches sources in parallel,
     deduplicates across USDA and OFF, caches combined results, handles partial
-    failures with warnings.'
+    failures with warnings.; Added CustomFoodStore import and store to
+    SearchFoodDeps. When source='all', custom foods are searched fresh via
+    store.search() and prepended to results, both when hitting cache and when
+    fetching live USDA/OFF results. Custom foods skip cross-source
+    deduplication."
   server/src/tools/get-nutrition.ts:
-    'Created get_nutrition tool handler with unit
+    "Created get_nutrition tool handler with unit
     conversion and nutrient scaling: toGrams, scaleNutrient, scaleNutrients, and
     handleGetNutrition. Converts weight units to grams, scales per-100g
     nutrients, rounds to 1 decimal, builds serving description.; Removed
     UNIT_TO_GRAMS/toGrams (moved to conversion module), added NutritionUnit type
     with all 15 units, updated handleGetNutrition to use convertToGrams with
-    food context, improved buildServingDescription for non-weight units'
-  server/src/tools/__tests__/search-food.test.ts: '13 unit tests covering: name
+    food context, improved buildServingDescription for non-weight units; Added
+    CustomFoodStore import and store to GetNutritionDeps. Added
+    scalePerServing() for per-serving custom foods (ratio-based scaling with
+    unit validation). Replaced the 'Unsupported source: custom' error with
+    actual custom food retrieval supporting both per-100g and per-serving
+    storage modes."
+  server/src/tools/__tests__/search-food.test.ts: "13 unit tests covering: name
     normalization, word overlap calculation, cross-source duplicate detection,
     deduplication with overlapping results, single-source search, partial source
-    failure, and combined cache hits.'
-  server/src/tools/__tests__/get-nutrition.test.ts: '16 unit tests covering:
+    failure, and combined cache hits.; Added CustomFoodStore to imports and
+    deps. Added 3 tests: custom foods appear in source='all' results, excluded
+    from source-specific searches, and appear even when USDA/OFF results come
+    from cache."
+  server/src/tools/__tests__/get-nutrition.test.ts: "16 unit tests covering:
     toGrams conversion for all supported units, scaleNutrient with
     available/unavailable nutrients, scaleNutrients for 150g/oz/lb amounts,
     handleGetNutrition end-to-end with USDA food, error on missing food, error
@@ -91,7 +112,11 @@ affectedFiles:
     conversion module tests), added MILK_NUTRITION and BANANA_NUTRITION
     fixtures, added 4 integration tests for volume unit with density, volume
     unit without density (error), descriptive unit with portions, descriptive
-    unit without portions (error)'
+    unit without portions (error); Added CustomFoodStore to imports and deps.
+    Replaced 'throws for custom source' test with 5 new tests: per-100g custom
+    food scaling, per-100g with different weight unit, per-serving ratio
+    scaling, incompatible unit error for per-serving foods, and custom food not
+    found error."
   server/src/conversion/types.ts: Created PortionData and FoodConversionContext
     types for unit conversion context
   server/src/conversion/units.ts: Created standalone conversion module with
@@ -101,10 +126,28 @@ affectedFiles:
   server/src/tools/calculate-meal.ts: Created handler with handleCalculateMeal
     function, supporting types (MealItem, CalculateMealParams,
     CalculateMealResponse, NutrientCoverage), and helper functions (leastFresh,
-    collectNutrientKeys, aggregateNutrient, determineCoverage, sumNutrients)
+    collectNutrientKeys, aggregateNutrient, determineCoverage, sumNutrients);
+    Added CustomFoodStore import and store to CalculateMealDeps, enabling
+    handleGetNutrition to receive the store dependency transitively.
   server/src/tools/__tests__/calculate-meal.test.ts: 'Created 4 tests: two-item
     meal summing, partial coverage detection, error propagation with clear item
-    identification, and single-item identity verification'
+    identification, and single-item identity verification; Added CustomFoodStore
+    to imports and deps (via makeDeps). Added 1 test: meal with mixed USDA and
+    custom food items computes correct totals.'
+  server/src/clients/custom-store.ts: 'New module: CustomFoodStore class with
+    save(), get(), search() methods; SaveFoodInput interface;
+    generateCustomFoodId helper; per-100g normalization for weight-based
+    servings'
+  server/src/clients/__tests__/custom-store.test.ts: 'New test file: 16 tests
+    covering ID generation, save/retrieve round-trip, upsert behavior, TTL
+    expiration, search by name/brand, per-100g normalization, and per-serving
+    storage'
+  server/src/tools/save-food.ts: 'New file: save_food tool handler with
+    validateNutrients validation and handleSaveFood function that delegates to
+    CustomFoodStore.save()'
+  server/src/tools/__tests__/save-food.test.ts: 'New file: 4 unit tests covering
+    successful save, negative calorie validation, NaN validation, and upsert
+    behavior'
 log: []
 schema: v1.0
 childrenIds:

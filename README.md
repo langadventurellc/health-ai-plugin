@@ -68,7 +68,7 @@ mise run type-check         # tsc --noEmit
 
 ## Status
 
-In active development. The MCP server core is implemented with `search_food`, `get_nutrition`, and `calculate_meal` tools, SQLite caching, and USDA/Open Food Facts integration. See [REQUIREMENTS.md](REQUIREMENTS.md) for the full specification.
+In active development. The MCP server core is implemented with `search_food`, `get_nutrition`, `calculate_meal`, and `save_food` tools, SQLite caching, and USDA/Open Food Facts integration. See [REQUIREMENTS.md](REQUIREMENTS.md) for the full specification.
 
 **Implemented:**
 
@@ -77,10 +77,10 @@ In active development. The MCP server core is implemented with `search_food`, `g
 - Nutritional lookup with unit conversion: weight (g, kg, oz, lb), volume (cup, tbsp, tsp, fl_oz, mL, L), and descriptive sizes (piece, slice, small, medium, large)
 - Meal calculation (`calculate_meal`) with deterministic nutrient summing and coverage reporting
 - SQLite cache with TTL revalidation and graceful degradation
+- Custom food storage (`save_food`) for restaurant items and nutrition labels, with 90-day TTL and upsert semantics
 
 **Planned:**
 
-- `save_food` tool for custom/saved foods
 - OAuth 2.1 authentication
 - Claude Code plugin with `nutrition-tracker` skill
 - AWS deployment

@@ -3,6 +3,7 @@ import { Cache } from '../../cache/cache.js';
 import { initializeDatabase, closeDatabase } from '../../cache/db.js';
 import { UsdaClient } from '../../clients/usda.js';
 import { OpenFoodFactsClient } from '../../clients/openfoodfacts.js';
+import { CustomFoodStore } from '../../clients/custom-store.js';
 import type { NutritionData } from '../../types.js';
 import {
   scaleNutrient,
@@ -92,11 +93,13 @@ const BANANA_NUTRITION: NutritionData = {
 };
 
 let cache: Cache;
+let store: CustomFoodStore;
 
 beforeEach(() => {
   closeDatabase();
   initializeDatabase(':memory:');
   cache = new Cache();
+  store = new CustomFoodStore();
 });
 
 afterEach(() => {
@@ -193,7 +196,7 @@ describe('handleGetNutrition', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const result = await handleGetNutrition(
-      { usda, off },
+      { usda, off, store },
       { foodId: '171705', source: 'usda', amount: 200, unit: 'g' },
     );
 
@@ -216,22 +219,137 @@ describe('handleGetNutrition', () => {
 
     await expect(
       handleGetNutrition(
-        { usda, off },
+        { usda, off, store },
         { foodId: 'nonexistent', source: 'usda', amount: 100, unit: 'g' },
       ),
     ).rejects.toThrow('Nutrition data not found for food ID "nonexistent"');
   });
 
-  it('throws for custom source (not yet supported)', async () => {
+  it('returns scaled nutrition for per-100g custom food', async () => {
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    // Save a weight-based custom food (normalized to per-100g by the store)
+    const { id } = store.save({
+      name: 'Homemade Granola',
+      servingSize: { amount: 100, unit: 'g' },
+      nutrients: {
+        calories: 450,
+        protein_g: 10,
+        total_carbs_g: 60,
+        total_fat_g: 18,
+      },
+    });
+
+    const result = await handleGetNutrition(
+      { usda, off, store },
+      { foodId: id, source: 'custom', amount: 50, unit: 'g' },
+    );
+
+    expect(result.servingDescription).toBe('50g of Homemade Granola');
+    // 450 * (50/100) = 225
+    expect(result.nutrients.calories).toEqual({ value: 225, available: true });
+    // 10 * (50/100) = 5
+    expect(result.nutrients.protein_g).toEqual({ value: 5, available: true });
+    // Custom food is authoritative local data -- no stale indicator
+    expect(result.dataFreshness).toBeUndefined();
+    expect(result.warnings).toBeUndefined();
+  });
+
+  it('scales per-100g custom food with different weight unit', async () => {
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    const { id } = store.save({
+      name: 'Protein Powder',
+      servingSize: { amount: 30, unit: 'g' },
+      nutrients: {
+        calories: 120,
+        protein_g: 24,
+        total_carbs_g: 3,
+        total_fat_g: 1,
+      },
+    });
+
+    // Request 2oz; store normalized 30g serving to per-100g
+    const result = await handleGetNutrition(
+      { usda, off, store },
+      { foodId: id, source: 'custom', amount: 2, unit: 'oz' },
+    );
+
+    // 2oz = 56.699g; per-100g calories = 120 * (100/30) = 400
+    // scaled: 400 * (56.699/100) = 226.796 -> 226.8
+    expect(result.nutrients.calories.value).toBeCloseTo(226.8, 0);
+  });
+
+  it('scales per-serving custom food by ratio', async () => {
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    // Save a non-weight-based serving (per-serving mode)
+    const { id } = store.save({
+      name: 'Birthday Cake Slice',
+      servingSize: { amount: 1, unit: 'piece' },
+      nutrients: {
+        calories: 350,
+        protein_g: 4,
+        total_carbs_g: 50,
+        total_fat_g: 15,
+      },
+    });
+
+    const result = await handleGetNutrition(
+      { usda, off, store },
+      { foodId: id, source: 'custom', amount: 2, unit: 'piece' },
+    );
+
+    expect(result.servingDescription).toBe('2 piece Birthday Cake Slice');
+    // 350 * 2 = 700
+    expect(result.nutrients.calories).toEqual({ value: 700, available: true });
+    // 4 * 2 = 8
+    expect(result.nutrients.protein_g).toEqual({ value: 8, available: true });
+  });
+
+  it('throws when per-serving custom food is requested with incompatible unit', async () => {
+    const usda = new UsdaClient(cache, 'test-key');
+    const off = new OpenFoodFactsClient(cache);
+
+    const { id } = store.save({
+      name: 'Cookie',
+      servingSize: { amount: 1, unit: 'piece' },
+      nutrients: {
+        calories: 200,
+        protein_g: 2,
+        total_carbs_g: 28,
+        total_fat_g: 10,
+      },
+    });
+
+    await expect(
+      handleGetNutrition(
+        { usda, off, store },
+        { foodId: id, source: 'custom', amount: 50, unit: 'g' },
+      ),
+    ).rejects.toThrow('Cannot convert "g" to "piece"');
+  });
+
+  it('throws when custom food is not found', async () => {
     const usda = new UsdaClient(cache, 'test-key');
     const off = new OpenFoodFactsClient(cache);
 
     await expect(
       handleGetNutrition(
-        { usda, off },
-        { foodId: 'custom-1', source: 'custom', amount: 100, unit: 'g' },
+        { usda, off, store },
+        {
+          foodId: 'custom:nonexistent',
+          source: 'custom',
+          amount: 100,
+          unit: 'g',
+        },
       ),
-    ).rejects.toThrow('Unsupported source: custom');
+    ).rejects.toThrow(
+      'Nutrition data not found for food ID "custom:nonexistent" from source "custom"',
+    );
   });
 
   it('handles oz unit correctly end-to-end', async () => {
@@ -241,7 +359,7 @@ describe('handleGetNutrition', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const result = await handleGetNutrition(
-      { usda, off },
+      { usda, off, store },
       { foodId: '171705', source: 'usda', amount: 6, unit: 'oz' },
     );
 
@@ -276,7 +394,7 @@ describe('handleGetNutrition', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const result = await handleGetNutrition(
-      { usda, off },
+      { usda, off, store },
       { foodId: '171705', source: 'usda', amount: 100, unit: 'g' },
     );
 
@@ -294,7 +412,7 @@ describe('handleGetNutrition', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const result = await handleGetNutrition(
-      { usda, off },
+      { usda, off, store },
       { foodId: '171265', source: 'usda', amount: 1, unit: 'cup' },
     );
 
@@ -314,7 +432,7 @@ describe('handleGetNutrition', () => {
 
     await expect(
       handleGetNutrition(
-        { usda, off },
+        { usda, off, store },
         { foodId: '171705', source: 'usda', amount: 1, unit: 'cup' },
       ),
     ).rejects.toThrow('density data');
@@ -327,7 +445,7 @@ describe('handleGetNutrition', () => {
     const off = new OpenFoodFactsClient(cache);
 
     const result = await handleGetNutrition(
-      { usda, off },
+      { usda, off, store },
       { foodId: '173944', source: 'usda', amount: 1, unit: 'medium' },
     );
 
@@ -344,7 +462,7 @@ describe('handleGetNutrition', () => {
 
     await expect(
       handleGetNutrition(
-        { usda, off },
+        { usda, off, store },
         { foodId: '171705', source: 'usda', amount: 1, unit: 'medium' },
       ),
     ).rejects.toThrow('no portion data available');

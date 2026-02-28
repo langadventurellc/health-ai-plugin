@@ -20,9 +20,9 @@ The LLM reasons about _what_ was eaten and _how much_. The MCP server does the _
 ### MCP Server
 
 - **Stack:** TypeScript (ES2022, NodeNext), Express 5, MCP SDK, better-sqlite3, Zod
-- **Data sources:** USDA FoodData Central (primary, generic foods) + Open Food Facts (branded/packaged products)
-- **Implemented tools:** `search_food`, `get_nutrition`, `calculate_meal`
-- **Not yet implemented:** `save_food`, OAuth 2.1 auth
+- **Data sources:** USDA FoodData Central (primary, generic foods) + Open Food Facts (branded/packaged products) + Custom foods (user-saved via `save_food`)
+- **Implemented tools:** `search_food`, `get_nutrition`, `calculate_meal`, `save_food`
+- **Not yet implemented:** OAuth 2.1 auth
 - **Cache:** SQLite with TTL revalidation (30d USDA, 7d Open Food Facts, 90d custom/saved, 24h search results)
 - **Unit conversion:** Weight (g, kg, oz, lb), volume (cup, tbsp, tsp, fl_oz, mL, L) via per-food density, and descriptive sizes (piece, slice, small, medium, large) via USDA portion data. Errors when density or portion data is unavailable (never guesses).
 - **Graceful degradation:** When external APIs fail, stale cache data is served with `dataFreshness: "stale"` and warnings.
@@ -43,20 +43,23 @@ server/src/
   clients/
     usda.ts         # USDA FoodData Central client, portion extraction, density derivation
     openfoodfacts.ts # Open Food Facts client with cache-through reads
+    custom-store.ts # CustomFoodStore: save/get/search custom foods, per-100g normalization
     types.ts        # Re-exports from ../types.ts
   tools/
     search-food.ts  # Deduplication logic, parallel source search, combined caching
     get-nutrition.ts # Nutrient scaling from per-100g, delegates conversion to conversion/units
     calculate-meal.ts # Multi-item meal totals, nutrient coverage reporting
+    save-food.ts    # Validates and saves custom food entries via CustomFoodStore
 ```
 
 ### Key Patterns
 
 - **Cache-through reads:** API clients check cache first, fall back to live API, fall back to stale cache.
-- **Normalized nutrients:** All nutrition data stored as per-100g values. The `get_nutrition` tool scales to requested amounts.
+- **Normalized nutrients:** USDA/OFF nutrition data stored as per-100g values. Custom foods use `storageMode`: weight-based servings are normalized to per-100g; non-weight servings (cup, piece, etc.) are stored per-serving. `get_nutrition` handles both scaling paths.
 - **`{ value, available }` pairs:** Every nutrient distinguishes "0g" from "data not available".
 - **Volume-to-weight conversion:** USDA client extracts `foodPortions` and derives `densityGPerMl` from cup portions. The `conversion/units.ts` module handles all unit math; tool handlers never do conversion inline.
-- **Cross-source deduplication:** `search_food` deduplicates USDA vs OFF results using name normalization and word overlap (>80% threshold).
+- **Cross-source deduplication:** `search_food` deduplicates USDA vs OFF results using name normalization and word overlap (>80% threshold). Custom foods are always searched fresh from SQLite and prepended to results without deduplication.
+- **Custom food IDs:** Deterministic `custom:sha256(name|brand)` -- same name+brand always produces the same ID, enabling upsert semantics.
 - **Dependency injection:** Tool handlers receive client/cache deps as parameters for testability.
 
 ### Plugin
