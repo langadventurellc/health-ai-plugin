@@ -68,10 +68,24 @@ server/src/
 
 ### Plugin
 
-- `SKILL.md` guides conversation flow: parse → clarify (max 2-3 questions) → search → calculate → present with confidence score
-- Images handled by Claude's built-in vision (nutrition labels and food photos)
-- Restaurant food: LLM web searches then caches via `save_food` for consistency. Always check `search_food` before web searching.
-- Confidence: 0-100% numeric + label (High/Good/Moderate/Low) with explanation of what was estimated
+No executable code -- configuration and LLM instructions only.
+
+```
+plugin/
+  .claude-plugin/
+    plugin.json             # Plugin metadata (name, version, description)
+  .mcp.json                 # MCP server connection (type: http, server URL)
+  skills/
+    nutrition-tracker/
+      SKILL.md              # Full conversation flow for the nutrition-tracker skill
+  README.md                 # Plugin setup and usage
+```
+
+- `.mcp.json` points to the deployed MCP server URL. OAuth 2.1 auth is handled automatically by Claude Code on first connection.
+- `SKILL.md` guides conversation flow: parse input, clarify (max 2-3 questions), search/lookup via MCP tools, calculate, present with confidence score.
+- Images handled by Claude's built-in vision (nutrition labels and food photos).
+- Restaurant food: always check `search_food` first, then web search, then cache via `save_food`.
+- Confidence: 0-100% numeric + label (High/Good/Moderate/Low) with explanation of what was estimated vs. known.
 
 ## Setup
 
