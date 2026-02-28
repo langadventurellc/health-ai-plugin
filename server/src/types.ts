@@ -1,8 +1,8 @@
 /** Data source for food items. */
-export type FoodSource = "usda" | "openfoodfacts" | "custom";
+export type FoodSource = 'usda' | 'openfoodfacts' | 'custom';
 
 /** Indicates how data was resolved: live API, fresh cache, or expired cache. */
-export type DataFreshness = "live" | "cache" | "stale";
+export type DataFreshness = 'live' | 'cache' | 'stale';
 
 /** Wraps a value with metadata about how it was resolved. */
 export interface CacheableResult<T> {

@@ -1,0 +1,62 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+min_version = "2024.11.0"
+
+[tools]
+node = "24.11.0"
+
+[env]
+NODE_ENV = "development"
+_.path = ["{{config_root}}/server/node_modules/.bin"]
+
+[tasks.build]
+description = "Compile TypeScript"
+run = "tsc"
+dir = "server"
+sources = ["src/**/*.ts", "tsconfig.json"]
+outputs = ["dist/"]
+
+[tasks.dev]
+description = "Dev server with hot reload"
+run = "tsx watch src/index.ts"
+dir = "server"
+
+[tasks.start]
+description = "Start production server"
+run = "node dist/index.js"
+dir = "server"
+depends = ["build"]
+
+[tasks.test]
+description = "Run tests"
+run = "vitest run"
+dir = "server"
+alias = "t"
+
+[tasks."test:watch"]
+description = "Tests in watch mode"
+run = "vitest --watch"
+dir = "server"
+
+[tasks.lint]
+description = "Lint and fix"
+run = "eslint . --fix"
+dir = "server"
+alias = "l"
+
+[tasks.format]
+description = "Format code"
+run = "prettier --write \"src/**/*.{ts,js,json,md}\""
+dir = "server"
+alias = "f"
+
+[tasks."type-check"]
+description = "Type checking"
+run = "tsc --noEmit"
+dir = "server"
+alias = "tc"
+
+[tasks.quality]
+description = "Run all quality checks (lint, format, type-check)"
+depends = ["lint", "format", "type-check"]
+run = "echo 'All quality checks passed'"
+dir = "server"

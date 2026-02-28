@@ -1,8 +1,8 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 
-const DEFAULT_DB_PATH = "./data/food-cache.db";
+const DEFAULT_DB_PATH = './data/food-cache.db';
 
 let db: Database.Database | null = null;
 
@@ -10,7 +10,7 @@ let db: Database.Database | null = null;
 export function getDatabase(): Database.Database {
   if (!db) {
     throw new Error(
-      "Database not initialized. Call initializeDatabase() first."
+      'Database not initialized. Call initializeDatabase() first.',
     );
   }
   return db;
@@ -18,7 +18,7 @@ export function getDatabase(): Database.Database {
 
 /** Creates the SQLite database, enables WAL mode, and creates tables if they don't exist. */
 export function initializeDatabase(
-  dbPath: string = process.env.SQLITE_DB_PATH ?? DEFAULT_DB_PATH
+  dbPath: string = process.env.SQLITE_DB_PATH ?? DEFAULT_DB_PATH,
 ): Database.Database {
   if (db) {
     return db;
@@ -30,7 +30,7 @@ export function initializeDatabase(
   db = new Database(dbPath);
 
   // Enable WAL mode for better concurrent read performance
-  db.pragma("journal_mode = WAL");
+  db.pragma('journal_mode = WAL');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS nutrition_cache (
@@ -62,4 +62,3 @@ export function closeDatabase(): void {
     db = null;
   }
 }
-

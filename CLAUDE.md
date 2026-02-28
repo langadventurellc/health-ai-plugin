@@ -15,7 +15,7 @@ Two components:
 
 ### Core Design Constraint
 
-The LLM reasons about *what* was eaten and *how much*. The MCP server does the *calculations*. All nutritional math must be deterministic (computed by the server, never by LLM probability).
+The LLM reasons about _what_ was eaten and _how much_. The MCP server does the _calculations_. All nutritional math must be deterministic (computed by the server, never by LLM probability).
 
 ### MCP Server
 
@@ -61,28 +61,52 @@ server/src/
 - Restaurant food: LLM web searches then caches via `save_food` for consistency. Always check `search_food` before web searching.
 - Confidence: 0-100% numeric + label (High/Good/Moderate/Low) with explanation of what was estimated
 
-## Build, Run, Test
-
-All commands run from `server/`:
+## Setup
 
 ```bash
-npm install          # Install dependencies
-npm run build        # TypeScript compile to dist/
-npm run dev          # Dev server with hot reload (tsx watch)
-npm start            # Production server from dist/
-npm test             # Run all tests (vitest)
+mise install         # Pin Node 24.11.0
+npm install          # Root: installs husky, lint-staged (sets up git hooks)
+cd server && npm install  # Server: installs project dependencies
 ```
 
+Both `npm install` steps are required. Root installs repo-wide tooling (git hooks); `server/` installs project dependencies.
+
 **Required env vars** (see `server/.env.example`):
+
 - `USDA_API_KEY` -- free from https://fdc.nal.usda.gov/api-key-signup
 - `PORT` -- defaults to 3000
 - `SQLITE_DB_PATH` -- defaults to `./data/food-cache.db`
 
+## Build, Run, Test
+
+Prefer `mise run <task>` from the repo root. All mise tasks run in `server/` automatically.
+
+```bash
+mise run dev         # Dev server with hot reload
+mise run build       # TypeScript compile to dist/
+mise run start       # Production server (depends on build)
+mise run test        # Run all tests (vitest), alias: mise run t
+mise run lint        # ESLint --fix, alias: mise run l
+mise run format      # Prettier --write, alias: mise run f
+mise run type-check  # tsc --noEmit, alias: mise run tc
+mise run quality     # All quality checks (lint + format + type-check)
+```
+
+Equivalent npm scripts exist in `server/package.json` (`npm run dev`, `npm run build`, `npm test`, `npm run lint`, `npm run format`).
+
 **Endpoints:**
+
 - `GET /health` -- health check
 - `POST /mcp` -- MCP Streamable HTTP (initialization and requests)
 - `GET /mcp` -- SSE stream for server-initiated messages
 - `DELETE /mcp` -- session termination
+
+## Code Quality
+
+- **ESLint 9** flat config at repo root (`eslint.config.mjs`). Uses `typescript-eslint` with `projectService`, `sonarjs`, and `eslint-config-prettier`. Test files have relaxed rules.
+- **Prettier** config at repo root (`.prettierrc`). Single quotes, trailing commas, 80 char width.
+- **Pre-commit hooks:** Husky + lint-staged. On commit: lint-staged runs ESLint --fix and Prettier on staged files. If code files (`.ts`/`.js`) are staged, also runs type-check and tests.
+- Never skip hooks (`--no-verify`) unless explicitly asked.
 
 ## Trellis
 

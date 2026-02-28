@@ -1,7 +1,7 @@
-import type { UsdaClient } from "../clients/usda.js";
-import type { OpenFoodFactsClient } from "../clients/openfoodfacts.js";
-import type { Cache } from "../cache/cache.js";
-import type { FoodSearchResult, DataFreshness } from "../types.js";
+import type { UsdaClient } from '../clients/usda.js';
+import type { OpenFoodFactsClient } from '../clients/openfoodfacts.js';
+import type { Cache } from '../cache/cache.js';
+import type { FoodSearchResult, DataFreshness } from '../types.js';
 
 interface SearchFoodDeps {
   usda: UsdaClient;
@@ -11,7 +11,7 @@ interface SearchFoodDeps {
 
 interface SearchFoodParams {
   query: string;
-  source: "usda" | "openfoodfacts" | "all";
+  source: 'usda' | 'openfoodfacts' | 'all';
 }
 
 interface SearchFoodResponse {
@@ -24,16 +24,16 @@ interface SearchFoodResponse {
 export function normalizeName(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[^\w\s]/g, "")
-    .replace(/\b(raw|cooked|fresh|frozen|dried|organic|natural)\b/g, "")
-    .replace(/\s+/g, " ")
+    .replace(/[^\w\s]/g, '')
+    .replace(/\b(raw|cooked|fresh|frozen|dried|organic|natural)\b/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
 /** Returns the fraction of words shared between two strings. */
 export function wordOverlap(a: string, b: string): number {
-  const wordsA = new Set(a.split(" ").filter(Boolean));
-  const wordsB = new Set(b.split(" ").filter(Boolean));
+  const wordsA = new Set(a.split(' ').filter(Boolean));
+  const wordsB = new Set(b.split(' ').filter(Boolean));
   if (wordsA.size === 0 || wordsB.size === 0) return 0;
 
   let shared = 0;
@@ -61,42 +61,29 @@ export function isDuplicate(a: FoodSearchResult, b: FoodSearchResult): boolean {
   return false;
 }
 
+/** Returns true if the candidate is a duplicate of any item in the list. */
+function isDuplicateOfAny(
+  candidate: FoodSearchResult,
+  existing: FoodSearchResult[],
+): boolean {
+  return existing.some((item) => isDuplicate(item, candidate));
+}
+
 /**
  * Deduplicates search results across sources.
  * Prefers USDA results; keeps the OFF id as metadata is not needed per spec.
  */
 export function deduplicateResults(
   usdaResults: FoodSearchResult[],
-  offResults: FoodSearchResult[]
+  offResults: FoodSearchResult[],
 ): FoodSearchResult[] {
   const deduplicated: FoodSearchResult[] = [...usdaResults];
-  const usedOffIndices = new Set<number>();
 
-  for (let oi = 0; oi < offResults.length; oi++) {
-    const offItem = offResults[oi];
-    let isDup = false;
-
-    for (const usdaItem of usdaResults) {
-      if (isDuplicate(usdaItem, offItem)) {
-        isDup = true;
-        break;
-      }
+  for (const offItem of offResults) {
+    if (isDuplicateOfAny(offItem, deduplicated)) {
+      continue;
     }
-
-    if (!isDup) {
-      // Also check against already-added OFF items
-      for (const addedIdx of usedOffIndices) {
-        if (isDuplicate(offResults[addedIdx], offItem)) {
-          isDup = true;
-          break;
-        }
-      }
-    }
-
-    if (!isDup) {
-      deduplicated.push(offItem);
-      usedOffIndices.add(oi);
-    }
+    deduplicated.push(offItem);
   }
 
   return deduplicated;
@@ -108,40 +95,87 @@ function leastFresh(a: DataFreshness, b: DataFreshness): DataFreshness {
   return rank[a] >= rank[b] ? a : b;
 }
 
+/** Wraps a single-source search result into a SearchFoodResponse. */
+async function searchSingleSource(
+  searchFn: (
+    query: string,
+  ) => Promise<{ data: FoodSearchResult[]; freshness: DataFreshness }>,
+  query: string,
+  staleWarning: string,
+): Promise<SearchFoodResponse> {
+  const result = await searchFn(query);
+  const response: SearchFoodResponse = { results: result.data };
+  if (result.freshness === 'stale') {
+    response.dataFreshness = 'stale';
+    response.warnings = [staleWarning];
+  }
+  return response;
+}
+
+interface SettledSourceResult {
+  results: FoodSearchResult[];
+  freshness: DataFreshness;
+  warnings: string[];
+}
+
+/** Extracts results from a settled promise, collecting freshness and warnings. */
+function processSettledResult(
+  settled: PromiseSettledResult<{
+    data: FoodSearchResult[];
+    freshness: DataFreshness;
+  }>,
+  sourceName: string,
+): SettledSourceResult {
+  const warnings: string[] = [];
+  if (settled.status === 'fulfilled') {
+    if (settled.value.freshness === 'stale') {
+      warnings.push(
+        `Using cached data for ${sourceName}; API was unavailable.`,
+      );
+    }
+    return {
+      results: settled.value.data,
+      freshness: settled.value.freshness,
+      warnings,
+    };
+  }
+  warnings.push(
+    `${sourceName} source was unavailable; results may be incomplete.`,
+  );
+  return { results: [], freshness: 'stale', warnings };
+}
+
 /** Handles the search_food MCP tool call. */
 export async function handleSearchFood(
   deps: SearchFoodDeps,
-  params: SearchFoodParams
+  params: SearchFoodParams,
 ): Promise<SearchFoodResponse> {
   const { query, source } = params;
-  const warnings: string[] = [];
 
   // Check combined cache first when searching all sources
-  if (source === "all") {
-    const cached = deps.cache.getSearchResults("all", query) as FoodSearchResult[] | null;
+  if (source === 'all') {
+    const cached = deps.cache.getSearchResults('all', query) as
+      | FoodSearchResult[]
+      | null;
     if (cached) {
-      return { results: cached, dataFreshness: "cache" };
+      return { results: cached, dataFreshness: 'cache' };
     }
   }
 
-  if (source === "usda") {
-    const result = await deps.usda.searchFoods(query);
-    const response: SearchFoodResponse = { results: result.data };
-    if (result.freshness === "stale") {
-      response.dataFreshness = "stale";
-      response.warnings = ["Using cached data; USDA API was unavailable."];
-    }
-    return response;
+  if (source === 'usda') {
+    return searchSingleSource(
+      (q) => deps.usda.searchFoods(q),
+      query,
+      'Using cached data; USDA API was unavailable.',
+    );
   }
 
-  if (source === "openfoodfacts") {
-    const result = await deps.off.searchFoods(query);
-    const response: SearchFoodResponse = { results: result.data };
-    if (result.freshness === "stale") {
-      response.dataFreshness = "stale";
-      response.warnings = ["Using cached data; Open Food Facts API was unavailable."];
-    }
-    return response;
+  if (source === 'openfoodfacts') {
+    return searchSingleSource(
+      (q) => deps.off.searchFoods(q),
+      query,
+      'Using cached data; Open Food Facts API was unavailable.',
+    );
   }
 
   // source === "all": search both in parallel
@@ -150,37 +184,18 @@ export async function handleSearchFood(
     deps.off.searchFoods(query),
   ]);
 
-  let usdaResults: FoodSearchResult[] = [];
-  let offResults: FoodSearchResult[] = [];
-  let freshness: DataFreshness = "live";
+  const usda = processSettledResult(usdaSettled, 'USDA');
+  const off = processSettledResult(offSettled, 'Open Food Facts');
 
-  if (usdaSettled.status === "fulfilled") {
-    usdaResults = usdaSettled.value.data;
-    freshness = leastFresh(freshness, usdaSettled.value.freshness);
-    if (usdaSettled.value.freshness === "stale") {
-      warnings.push("Using cached data for USDA; API was unavailable.");
-    }
-  } else {
-    warnings.push("USDA source was unavailable; results may be incomplete.");
-  }
-
-  if (offSettled.status === "fulfilled") {
-    offResults = offSettled.value.data;
-    freshness = leastFresh(freshness, offSettled.value.freshness);
-    if (offSettled.value.freshness === "stale") {
-      warnings.push("Using cached data for Open Food Facts; API was unavailable.");
-    }
-  } else {
-    warnings.push("Open Food Facts source was unavailable; results may be incomplete.");
-  }
-
-  const results = deduplicateResults(usdaResults, offResults);
+  const warnings = [...usda.warnings, ...off.warnings];
+  const freshness = leastFresh(usda.freshness, off.freshness);
+  const results = deduplicateResults(usda.results, off.results);
 
   // Cache the combined results
-  deps.cache.setSearchResults("all", query, results);
+  deps.cache.setSearchResults('all', query, results);
 
   const response: SearchFoodResponse = { results };
-  if (freshness !== "live") {
+  if (freshness !== 'live') {
     response.dataFreshness = freshness;
   }
   if (warnings.length > 0) {

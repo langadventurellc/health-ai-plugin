@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
-import type Database from "better-sqlite3";
-import type { FoodSource } from "../types.js";
-import { getDatabase } from "./db.js";
+import { createHash } from 'node:crypto';
+import type Database from 'better-sqlite3';
+import type { FoodSource } from '../types.js';
+import { getDatabase } from './db.js';
 
 /** TTL durations in seconds, keyed by data source. */
 export const TTL = {
@@ -11,7 +11,7 @@ export const TTL = {
   search: 24 * 60 * 60, // 24 hours
 } as const;
 
-type SearchSource = FoodSource | "all";
+type SearchSource = FoodSource | 'all';
 
 interface CacheRow {
   cache_key: string;
@@ -28,12 +28,12 @@ function nutritionKey(source: FoodSource, foodId: string): string {
 
 /** Normalizes a search query: lowercase, trimmed, collapsed whitespace. */
 function normalizeQuery(query: string): string {
-  return query.toLowerCase().trim().replace(/\s+/g, " ");
+  return query.toLowerCase().trim().replace(/\s+/g, ' ');
 }
 
 /** Hashes a normalized query string for use as part of a cache key. */
 function hashQuery(normalizedQuery: string): string {
-  return createHash("sha256").update(normalizedQuery).digest("hex");
+  return createHash('sha256').update(normalizedQuery).digest('hex');
 }
 
 /** Builds the cache key for a search entry. */
@@ -43,7 +43,10 @@ export function searchKey(source: SearchSource, query: string): string {
 }
 
 /** Returns true if the given Unix-seconds expiration timestamp is in the past. */
-export function isExpired(expiresAt: number, nowSeconds: number = Math.floor(Date.now() / 1000)): boolean {
+export function isExpired(
+  expiresAt: number,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
   return nowSeconds >= expiresAt;
 }
 
@@ -61,27 +64,27 @@ export class Cache {
     this.db = db ?? getDatabase();
     this.stmts = {
       getNutrition: this.db.prepare(
-        "SELECT * FROM nutrition_cache WHERE cache_key = ?"
+        'SELECT * FROM nutrition_cache WHERE cache_key = ?',
       ),
       setNutrition: this.db.prepare(
         `INSERT OR REPLACE INTO nutrition_cache (cache_key, source, food_id, data, created_at, expires_at)
-         VALUES (@cache_key, @source, @food_id, @data, @created_at, @expires_at)`
+         VALUES (@cache_key, @source, @food_id, @data, @created_at, @expires_at)`,
       ),
       getSearch: this.db.prepare(
-        "SELECT * FROM search_cache WHERE cache_key = ?"
+        'SELECT * FROM search_cache WHERE cache_key = ?',
       ),
       setSearch: this.db.prepare(
         `INSERT OR REPLACE INTO search_cache (cache_key, source, query, data, created_at, expires_at)
-         VALUES (@cache_key, @source, @query, @data, @created_at, @expires_at)`
+         VALUES (@cache_key, @source, @query, @data, @created_at, @expires_at)`,
       ),
     };
   }
 
   /** Returns cached nutrition data if present and not expired, null otherwise. */
-  getNutrition(source: FoodSource, foodId: string): unknown | null {
-    const row = this.stmts.getNutrition.get(
-      nutritionKey(source, foodId)
-    ) as CacheRow | undefined;
+  getNutrition(source: FoodSource, foodId: string): unknown {
+    const row = this.stmts.getNutrition.get(nutritionKey(source, foodId)) as
+      | CacheRow
+      | undefined;
     if (!row || isExpired(row.expires_at)) {
       return null;
     }
@@ -89,10 +92,10 @@ export class Cache {
   }
 
   /** Returns cached nutrition data even if expired. Null only if not present. */
-  getNutritionStale(source: FoodSource, foodId: string): unknown | null {
-    const row = this.stmts.getNutrition.get(
-      nutritionKey(source, foodId)
-    ) as CacheRow | undefined;
+  getNutritionStale(source: FoodSource, foodId: string): unknown {
+    const row = this.stmts.getNutrition.get(nutritionKey(source, foodId)) as
+      | CacheRow
+      | undefined;
     if (!row) {
       return null;
     }
@@ -113,7 +116,7 @@ export class Cache {
   }
 
   /** Returns cached search results if present and not expired, null otherwise. */
-  getSearchResults(source: SearchSource, query: string): unknown | null {
+  getSearchResults(source: SearchSource, query: string): unknown {
     const key = searchKey(source, query);
     const row = this.stmts.getSearch.get(key) as CacheRow | undefined;
     if (!row || isExpired(row.expires_at)) {
@@ -123,7 +126,7 @@ export class Cache {
   }
 
   /** Returns cached search results even if expired. Null only if not present. */
-  getSearchResultsStale(source: SearchSource, query: string): unknown | null {
+  getSearchResultsStale(source: SearchSource, query: string): unknown {
     const key = searchKey(source, query);
     const row = this.stmts.getSearch.get(key) as CacheRow | undefined;
     if (!row) {

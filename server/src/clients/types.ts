@@ -5,4 +5,4 @@ export type {
   NutritionData,
   DataFreshness,
   CacheableResult,
-} from "../types.js";
+} from '../types.js';
