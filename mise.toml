@@ -7,6 +7,7 @@ node = "24.11.0"
 [env]
 NODE_ENV = "development"
 _.path = ["{{config_root}}/server/node_modules/.bin"]
+_.file = "server/.env"
 
 [tasks.build]
 description = "Compile TypeScript"

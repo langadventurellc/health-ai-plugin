@@ -1,0 +1,18 @@
+{
+  "name": "food-tracking-ai-marketplace",
+  "owner": {
+    "name": "LangAdventure LLC"
+  },
+  "metadata": {
+    "description": "Low-friction nutritional tracking plugin for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "food-tracking-ai",
+      "source": "../plugin",
+      "description": "Low-friction nutritional tracking. Describe what you ate and get calculated nutrition data with confidence scores.",
+      "category": "health",
+      "tags": ["nutrition", "food-tracking", "health", "mcp"]
+    }
+  ]
+}
