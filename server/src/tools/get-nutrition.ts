@@ -1,5 +1,10 @@
 import type { UsdaClient } from '../clients/usda.js';
 import type { OpenFoodFactsClient } from '../clients/openfoodfacts.js';
+import {
+  convertToGrams,
+  isWeightUnit,
+  isDescriptiveUnit,
+} from '../conversion/units.js';
 import type {
   FoodSource,
   NutrientValue,
@@ -13,11 +18,29 @@ interface GetNutritionDeps {
   off: OpenFoodFactsClient;
 }
 
+/** All unit types accepted by get_nutrition. */
+export type NutritionUnit =
+  | 'g'
+  | 'kg'
+  | 'oz'
+  | 'lb'
+  | 'cup'
+  | 'tbsp'
+  | 'tsp'
+  | 'fl_oz'
+  | 'mL'
+  | 'L'
+  | 'piece'
+  | 'medium'
+  | 'large'
+  | 'small'
+  | 'slice';
+
 interface GetNutritionParams {
   foodId: string;
   source: FoodSource;
   amount: number;
-  unit: 'g' | 'kg' | 'oz' | 'lb';
+  unit: NutritionUnit;
 }
 
 interface GetNutritionResponse extends NutritionResult {
@@ -25,28 +48,12 @@ interface GetNutritionResponse extends NutritionResult {
   warnings?: string[];
 }
 
-/** Conversion factors to grams for supported weight units. */
-const UNIT_TO_GRAMS: Record<string, number> = {
-  g: 1,
-  kg: 1000,
-  oz: 28.3495,
-  lb: 453.592,
-};
-
 const REQUIRED_NUTRIENT_KEYS = [
   'calories',
   'protein_g',
   'total_carbs_g',
   'total_fat_g',
 ];
-
-/** Converts a weight amount to grams. */
-export function toGrams(amount: number, unit: string): number {
-  if (!(unit in UNIT_TO_GRAMS)) {
-    throw new Error(`Unsupported unit: ${unit}`);
-  }
-  return amount * UNIT_TO_GRAMS[unit];
-}
 
 /** Scales a NutrientValue from per-100g to the given gram amount, rounding to 1 decimal. */
 export function scaleNutrient(
@@ -91,7 +98,13 @@ function buildServingDescription(
   unit: string,
   name: string,
 ): string {
-  return `${amount}${unit} of ${name}`;
+  if (isWeightUnit(unit)) {
+    return `${amount}${unit} of ${name}`;
+  }
+  if (isDescriptiveUnit(unit)) {
+    return `${amount} ${unit} ${name}`;
+  }
+  return `${amount} ${unit} of ${name}`;
 }
 
 /** Handles the get_nutrition MCP tool call. */
@@ -117,7 +130,10 @@ export async function handleGetNutrition(
   }
 
   const { data: nutritionData, freshness } = result;
-  const grams = toGrams(amount, unit);
+  const grams = convertToGrams(amount, unit, {
+    densityGPerMl: nutritionData.densityGPerMl,
+    portions: nutritionData.portions,
+  });
   const nutrients = scaleNutrients(nutritionData, grams);
   const servingDescription = buildServingDescription(
     amount,

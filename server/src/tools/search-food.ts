@@ -1,7 +1,11 @@
 import type { UsdaClient } from '../clients/usda.js';
 import type { OpenFoodFactsClient } from '../clients/openfoodfacts.js';
 import type { Cache } from '../cache/cache.js';
-import type { FoodSearchResult, DataFreshness } from '../types.js';
+import {
+  leastFresh,
+  type FoodSearchResult,
+  type DataFreshness,
+} from '../types.js';
 
 interface SearchFoodDeps {
   usda: UsdaClient;
@@ -87,12 +91,6 @@ export function deduplicateResults(
   }
 
   return deduplicated;
-}
-
-/** Returns the least-fresh value: stale > cache > live. */
-function leastFresh(a: DataFreshness, b: DataFreshness): DataFreshness {
-  const rank: Record<DataFreshness, number> = { live: 0, cache: 1, stale: 2 };
-  return rank[a] >= rank[b] ? a : b;
 }
 
 /** Wraps a single-source search result into a SearchFoodResponse. */

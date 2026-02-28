@@ -6,3 +6,5 @@ export type {
   DataFreshness,
   CacheableResult,
 } from '../types.js';
+
+export type { PortionData } from '../conversion/types.js';
