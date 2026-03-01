@@ -52,7 +52,7 @@ domain_name    = "food.example.com"
 hosted_zone_id = "Z0123456789ABCDEF"
 usda_api_key   = "your-usda-api-key"
 github_repo    = "your-username/food-tracking-ai"
-aws_region     = "us-east-1"  # optional, defaults to us-east-1
+aws_region     = "us-west-2"  # optional, defaults to us-west-2
 ```
 
 **No-domain mode** (HTTP, no auth):
@@ -60,7 +60,7 @@ aws_region     = "us-east-1"  # optional, defaults to us-east-1
 ```hcl
 usda_api_key = "your-usda-api-key"
 github_repo  = "your-username/food-tracking-ai"
-aws_region   = "us-east-1"  # optional, defaults to us-east-1
+aws_region   = "us-west-2"  # optional, defaults to us-west-2
 ```
 
 Apply the infrastructure:
@@ -80,7 +80,7 @@ After `terraform apply` completes, copy the outputs into GitHub Actions **variab
 | `ecs_service_name`        | `ECS_SERVICE_NAME`      | ECS service name                     |
 | `server_url`              | `SERVER_URL`            | Server URL for health checks         |
 | `github_actions_role_arn` | `AWS_ROLE_ARN`          | IAM role ARN for OIDC authentication |
-| _(your region)_           | `AWS_REGION`            | AWS region (e.g., `us-east-1`)       |
+| _(your region)_           | `AWS_REGION`            | AWS region (e.g., `us-west-2`)       |
 
 To print all outputs:
 
@@ -119,7 +119,7 @@ The first time Claude Code connects, it will complete the OAuth 2.1 flow automat
 
 ```diff
 - "url": "https://PLACEHOLDER_URL/mcp"
-+ "url": "http://food-tracking-alb-123456.us-east-1.elb.amazonaws.com/mcp"
++ "url": "http://food-tracking-alb-123456.us-west-2.elb.amazonaws.com/mcp"
 ```
 
 No OAuth flow is needed since auth is disabled.
@@ -132,11 +132,11 @@ No OAuth flow is needed since auth is disabled.
 | `hosted_zone_id` | No       | `null`      | Route53 hosted zone ID. Required when `domain_name` is set.     |
 | `usda_api_key`   | Yes      | --          | USDA FoodData Central API key (stored in Secrets Manager)       |
 | `github_repo`    | Yes      | --          | GitHub repo in `owner/repo` format (for OIDC trust policy)      |
-| `aws_region`     | No       | `us-east-1` | AWS region for all resources                                    |
+| `aws_region`     | No       | `us-west-2` | AWS region for all resources                                    |
 
 ## Useful Commands
 
-> These examples use the default resource names and `us-east-1` region. Your actual values may differ -- run `terraform output` and substitute the values from your `aws_region` Terraform variable accordingly.
+> These examples use the default resource names and `us-west-2` region. Your actual values may differ -- run `terraform output` and substitute the values from your `aws_region` Terraform variable accordingly.
 
 ### View Logs
 

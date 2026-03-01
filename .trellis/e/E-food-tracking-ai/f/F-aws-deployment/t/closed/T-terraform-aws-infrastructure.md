@@ -137,7 +137,7 @@ infra/
 
 ### Terraform Variables (minimum)
 
-- `aws_region` (default: `us-east-1`)
+- `aws_region` (default: `us-west-2`)
 - `domain_name` (required -- the FQDN for the server, e.g., `food.example.com`)
 - `hosted_zone_id` (required -- Route53 hosted zone for DNS validation and ALB alias record)
 - `usda_api_key` (sensitive, required -- initial value for Secrets Manager)
