@@ -5,6 +5,7 @@ import {
   UsdaClient,
   normalizeSearchResults,
   normalizeNutrition,
+  extractPortionData,
 } from '../usda.js';
 
 // -- Fixtures: Sample USDA API responses --
@@ -274,6 +275,53 @@ describe('normalizeNutrition', () => {
 
     expect(result.portions).toBeUndefined();
     expect(result.densityGPerMl).toBeUndefined();
+    expect(result.hasFilteredJunkPortions).toBeUndefined();
+  });
+
+  it('sets hasFilteredJunkPortions when all portions are junk', () => {
+    const result = normalizeNutrition({
+      ...FOOD_DETAIL_RESPONSE,
+      foodPortions: [
+        {
+          id: 1,
+          amount: 1,
+          gramWeight: 50,
+          portionDescription: 'undetermined',
+        },
+        {
+          id: 2,
+          amount: 1,
+          gramWeight: 44,
+          portionDescription: 'Quantity not specified',
+        },
+      ],
+    });
+
+    expect(result.portions).toBeUndefined();
+    expect(result.hasFilteredJunkPortions).toBe(true);
+  });
+
+  it('does not set hasFilteredJunkPortions when some portions survive filtering', () => {
+    const result = normalizeNutrition({
+      ...FOOD_DETAIL_RESPONSE,
+      foodPortions: [
+        {
+          id: 1,
+          amount: 1,
+          gramWeight: 50,
+          portionDescription: 'undetermined',
+        },
+        {
+          id: 2,
+          amount: 1,
+          gramWeight: 118,
+          portionDescription: '1 medium banana',
+        },
+      ],
+    });
+
+    expect(result.portions).toHaveLength(1);
+    expect(result.hasFilteredJunkPortions).toBeUndefined();
   });
 });
 
@@ -421,5 +469,115 @@ describe('UsdaClient cache integration', () => {
     const result = await client.getNutrition('99999');
 
     expect(result).toBeNull();
+  });
+});
+
+describe('extractPortionData junk filtering', () => {
+  it('filters out portions with "undetermined" description', () => {
+    const { portions } = extractPortionData([
+      {
+        id: 1,
+        amount: 1,
+        gramWeight: 50,
+        portionDescription: 'undetermined',
+      },
+      {
+        id: 2,
+        amount: 1,
+        gramWeight: 118,
+        portionDescription: '1 medium banana',
+      },
+    ]);
+
+    expect(portions).toHaveLength(1);
+    expect(portions[0].portionDescription).toBe('1 medium banana');
+  });
+
+  it('filters out portions with "Quantity not specified" description', () => {
+    const { portions } = extractPortionData([
+      {
+        id: 1,
+        amount: 1,
+        gramWeight: 50,
+        portionDescription: 'Quantity not specified',
+      },
+      {
+        id: 2,
+        amount: 1,
+        gramWeight: 30,
+        portionDescription: '1 slice',
+      },
+    ]);
+
+    expect(portions).toHaveLength(1);
+    expect(portions[0].portionDescription).toBe('1 slice');
+  });
+
+  it('filters out portions with "unknown" description', () => {
+    const { portions } = extractPortionData([
+      {
+        id: 1,
+        amount: 1,
+        gramWeight: 50,
+        portionDescription: 'unknown',
+      },
+    ]);
+
+    expect(portions).toHaveLength(0);
+  });
+
+  it('filters out portions with empty or whitespace-only descriptions', () => {
+    const { portions } = extractPortionData([
+      { id: 1, amount: 1, gramWeight: 50, portionDescription: '' },
+      { id: 2, amount: 1, gramWeight: 50, portionDescription: '   ' },
+    ]);
+
+    expect(portions).toHaveLength(0);
+  });
+
+  it('falls back to measureUnit.name and filters if that is also junk', () => {
+    const { portions } = extractPortionData([
+      {
+        id: 1,
+        amount: 1,
+        gramWeight: 50,
+        portionDescription: undefined,
+        measureUnit: { name: 'undetermined' },
+      },
+    ]);
+
+    expect(portions).toHaveLength(0);
+  });
+
+  it('falls back to "unknown" when both portionDescription and measureUnit are absent, and filters it', () => {
+    const { portions } = extractPortionData([
+      {
+        id: 1,
+        amount: 1,
+        gramWeight: 50,
+        portionDescription: undefined,
+      },
+    ]);
+
+    expect(portions).toHaveLength(0);
+  });
+
+  it('still filters zero gramWeight portions before junk filtering', () => {
+    const { portions } = extractPortionData([
+      {
+        id: 1,
+        amount: 1,
+        gramWeight: 0,
+        portionDescription: '1 banana',
+      },
+      {
+        id: 2,
+        amount: 1,
+        gramWeight: 50,
+        portionDescription: 'undetermined',
+      },
+    ]);
+
+    expect(portions).toHaveLength(0);
   });
 });

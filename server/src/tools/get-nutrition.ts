@@ -200,6 +200,7 @@ export async function handleGetNutrition(
   const grams = convertToGrams(amount, unit, {
     densityGPerMl: nutritionData.densityGPerMl,
     portions: nutritionData.portions,
+    hasFilteredJunkPortions: nutritionData.hasFilteredJunkPortions,
   });
   const nutrients = scaleNutrients(nutritionData, grams);
   const servingDescription = buildServingDescription(

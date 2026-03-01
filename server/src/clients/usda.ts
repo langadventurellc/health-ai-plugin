@@ -85,8 +85,21 @@ export function normalizeSearchResults(
   }));
 }
 
+/** Descriptions that provide no useful matching information. */
+const JUNK_DESCRIPTIONS = new Set([
+  'undetermined',
+  'quantity not specified',
+  'unknown',
+]);
+
+/** Returns true if a portion description is useless for matching. */
+function isJunkDescription(description: string): boolean {
+  const trimmed = description.trim();
+  return trimmed === '' || JUNK_DESCRIPTIONS.has(trimmed.toLowerCase());
+}
+
 /** Parses USDA food portions into PortionData and derives density when a cup portion exists. */
-function extractPortionData(rawPortions: UsdaFoodPortion[]): {
+export function extractPortionData(rawPortions: UsdaFoodPortion[]): {
   portions: PortionData[];
   densityGPerMl: number | undefined;
 } {
@@ -98,7 +111,8 @@ function extractPortionData(rawPortions: UsdaFoodPortion[]): {
       modifier: p.modifier,
       gramWeight: p.gramWeight,
       amount: p.amount,
-    }));
+    }))
+    .filter((p) => !isJunkDescription(p.portionDescription));
 
   // Derive density from a "1 cup" portion if available
   let densityGPerMl: number | undefined;
@@ -157,6 +171,9 @@ export function normalizeNutrition(
     const { portions, densityGPerMl } = extractPortionData(data.foodPortions);
     if (portions.length > 0) {
       result.portions = portions;
+    } else {
+      // Raw portions existed but all were filtered as junk
+      result.hasFilteredJunkPortions = true;
     }
     if (densityGPerMl != null) {
       result.densityGPerMl = densityGPerMl;

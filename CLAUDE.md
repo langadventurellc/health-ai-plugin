@@ -24,7 +24,7 @@ The LLM reasons about _what_ was eaten and _how much_. The MCP server does the _
 - **Implemented tools:** `search_food`, `get_nutrition`, `calculate_meal`, `save_food`
 - **Auth:** MCP OAuth 2.1 with PKCE, dynamic client registration. Controlled by `AUTH_ENABLED` env var (default `false`). When enabled, mounts `mcpAuthRouter` and applies `requireBearerAuth` middleware on `/mcp` routes. When disabled, `/mcp` routes are open (no-op middleware). Single-user v1 (auto-approve).
 - **Cache:** SQLite with TTL revalidation (30d USDA, 7d Open Food Facts, 90d custom/saved, 24h search results)
-- **Unit conversion:** Weight (g, kg, oz, lb), volume (cup, tbsp, tsp, fl_oz, mL, L) via per-food density, and descriptive sizes (piece, slice, small, medium, large) via USDA portion data. Errors when density or portion data is unavailable (never guesses).
+- **Unit conversion:** Weight (g, kg, oz, lb), volume (cup, tbsp, tsp, fl_oz, mL, L) via per-food density, and descriptive sizes (piece, slice, small, medium, large) via USDA portion data. Descriptive units use tiered matching: exact substring match on portion description/modifier, then "piece" falls back to natural-unit portions (e.g., "1 banana"), then size keywords fall back to natural units sorted by weight. Junk portion descriptions (empty, "undetermined", etc.) are filtered. Errors when density or portion data is unavailable (never guesses).
 - **Graceful degradation:** When external APIs fail, stale cache data is served with `dataFreshness: "stale"` and warnings.
 
 ### Server Structure
@@ -85,7 +85,7 @@ plugin/
 - `SKILL.md` guides conversation flow: parse input, clarify (max 2-3 questions), search/lookup via MCP tools, calculate, present with confidence score.
 - Images handled by Claude's built-in vision (nutrition labels and food photos).
 - Restaurant food: always check `search_food` first, then web search, then cache via `save_food`.
-- Confidence: 0-100% numeric + label (High/Good/Moderate/Low) with explanation of what was estimated vs. known.
+- Confidence: 0-100% numeric + label (High/Good/Moderate/Low/Very Low) with explanation of what was estimated vs. known.
 
 ## Setup
 

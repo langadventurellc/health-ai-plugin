@@ -39,6 +39,7 @@ export interface NutritionData {
   storageMode?: StorageMode;
   portions?: PortionData[];
   densityGPerMl?: number;
+  hasFilteredJunkPortions?: boolean;
   nutrients: {
     calories: NutrientValue;
     protein_g: NutrientValue;
