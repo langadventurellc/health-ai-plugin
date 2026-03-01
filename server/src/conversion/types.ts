@@ -10,4 +10,5 @@ export interface PortionData {
 export interface FoodConversionContext {
   densityGPerMl?: number;
   portions?: PortionData[];
+  hasFilteredJunkPortions?: boolean;
 }

@@ -1,4 +1,4 @@
-import type { FoodConversionContext } from './types.js';
+import type { FoodConversionContext, PortionData } from './types.js';
 
 /** Conversion factors from weight units to grams. */
 const WEIGHT_TO_GRAMS: Record<string, number> = {
@@ -58,9 +58,61 @@ export function volumeToMl(amount: number, unit: string): number {
   return amount * VOLUME_TO_ML[unit];
 }
 
+/** Keywords that indicate a volume or weight measure, not a natural countable unit. */
+const MEASURE_KEYWORDS =
+  /\b(cup|cups|tbsp|tsp|oz|g|ml|mL|slice|slices|inch|inches|fl oz)\b/i;
+
+const SIZE_UNITS = new Set(['small', 'medium', 'large']);
+
+/** Returns true if a portion represents a natural countable unit (e.g., "1 banana", "1 egg"). */
+function isNaturalUnit(portion: PortionData): boolean {
+  return (
+    portion.amount === 1 && !MEASURE_KEYWORDS.test(portion.portionDescription)
+  );
+}
+
+/** Finds natural-unit portions, sorted by gramWeight ascending. */
+function findNaturalUnits(portions: PortionData[]): PortionData[] {
+  return portions
+    .filter(isNaturalUnit)
+    .sort((a, b) => a.gramWeight - b.gramWeight);
+}
+
+/** Selects a portion from sorted natural units based on size keyword. */
+function selectBySize(
+  sizeKeyword: string,
+  naturalUnits: PortionData[],
+): PortionData {
+  if (naturalUnits.length === 1) {
+    return naturalUnits[0];
+  }
+  if (sizeKeyword === 'small') {
+    return naturalUnits[0];
+  }
+  if (sizeKeyword === 'large') {
+    return naturalUnits[naturalUnits.length - 1];
+  }
+  // "medium" -> median
+  const midIndex = Math.floor(naturalUnits.length / 2);
+  return naturalUnits[midIndex];
+}
+
+/** Computes gram weight from a matched portion. Throws if portion amount is invalid. */
+function portionToGrams(amount: number, portion: PortionData): number {
+  if (portion.amount <= 0) {
+    throw new Error(
+      `Invalid portion data: amount must be positive, got ${portion.amount} for "${portion.portionDescription}".`,
+    );
+  }
+  return (amount / portion.amount) * portion.gramWeight;
+}
+
 /**
- * Resolves a descriptive size (e.g., "medium", "slice") to grams using USDA portion data.
- * Matches against portionDescription and modifier fields, case-insensitively.
+ * Resolves a descriptive size to grams using tiered matching against USDA portion data.
+ *
+ * Tier 1: Exact substring match on portionDescription or modifier.
+ * Tier 2: "piece" falls back to the first natural-unit portion.
+ * Tier 3: "small"/"medium"/"large" fall back to natural-unit portions sorted by weight.
  */
 function resolveDescriptiveSize(
   amount: number,
@@ -69,27 +121,45 @@ function resolveDescriptiveSize(
 ): number {
   const portions = context.portions;
   if (!portions || portions.length === 0) {
+    if (context.hasFilteredJunkPortions) {
+      throw new Error(
+        `Cannot convert descriptive unit "${unit}": portion data is available but descriptions are not usable. Try using grams (g) instead.`,
+      );
+    }
     throw new Error(
-      `Cannot convert descriptive unit "${unit}": no portion data available for this food.`,
+      `Cannot convert descriptive unit "${unit}": no portion data available for this food. Try using grams (g) instead.`,
     );
   }
 
   const unitLower = unit.toLowerCase();
 
-  const match = portions.find((p) => {
+  // Tier 1: Exact substring match (original behavior)
+  const exactMatch = portions.find((p) => {
     const desc = p.portionDescription.toLowerCase();
     const mod = p.modifier?.toLowerCase() ?? '';
     return desc.includes(unitLower) || mod.includes(unitLower);
   });
 
-  if (!match) {
-    const available = portions.map((p) => p.portionDescription).join(', ');
-    throw new Error(
-      `Cannot convert descriptive unit "${unit}": no matching portion found. Available portions: ${available}`,
-    );
+  if (exactMatch) {
+    return portionToGrams(amount, exactMatch);
   }
 
-  return (amount / match.amount) * match.gramWeight;
+  const naturalUnits = findNaturalUnits(portions);
+
+  // Tier 2: "piece" fallback to natural-unit portion
+  if (unitLower === 'piece' && naturalUnits.length > 0) {
+    return portionToGrams(amount, naturalUnits[0]);
+  }
+
+  // Tier 3: Size keyword fallback ("small", "medium", "large")
+  if (SIZE_UNITS.has(unitLower) && naturalUnits.length > 0) {
+    return portionToGrams(amount, selectBySize(unitLower, naturalUnits));
+  }
+
+  const available = portions.map((p) => p.portionDescription).join(', ');
+  throw new Error(
+    `Cannot convert descriptive unit "${unit}": no matching portion found. Available portions: ${available}. Try using grams (g) instead.`,
+  );
 }
 
 /**
