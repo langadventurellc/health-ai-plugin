@@ -2,7 +2,7 @@
   "mcpServers": {
     "food-tracking-ai": {
       "type": "http",
-      "url": "https://PLACEHOLDER_URL/mcp"
+      "url": "http://localhost:3000/mcp"
     }
   }
 }

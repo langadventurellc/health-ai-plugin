@@ -22,7 +22,7 @@ The LLM reasons about _what_ was eaten and _how much_. The MCP server does the _
 - **Stack:** TypeScript (ES2022, NodeNext), Express 5, MCP SDK, better-sqlite3, Zod
 - **Data sources:** USDA FoodData Central (primary, generic foods) + Open Food Facts (branded/packaged products) + Custom foods (user-saved via `save_food`)
 - **Implemented tools:** `search_food`, `get_nutrition`, `calculate_meal`, `save_food`
-- **Auth:** MCP OAuth 2.1 with PKCE, dynamic client registration, bearer token middleware on all `/mcp` routes. Single-user v1 (auto-approve). Uses MCP SDK's `mcpAuthRouter` and `requireBearerAuth`.
+- **Auth:** MCP OAuth 2.1 with PKCE, dynamic client registration. Controlled by `AUTH_ENABLED` env var (default `false`). When enabled, mounts `mcpAuthRouter` and applies `requireBearerAuth` middleware on `/mcp` routes. When disabled, `/mcp` routes are open (no-op middleware). Single-user v1 (auto-approve).
 - **Cache:** SQLite with TTL revalidation (30d USDA, 7d Open Food Facts, 90d custom/saved, 24h search results)
 - **Unit conversion:** Weight (g, kg, oz, lb), volume (cup, tbsp, tsp, fl_oz, mL, L) via per-food density, and descriptive sizes (piece, slice, small, medium, large) via USDA portion data. Errors when density or portion data is unavailable (never guesses).
 - **Graceful degradation:** When external APIs fail, stale cache data is served with `dataFreshness: "stale"` and warnings.
@@ -81,7 +81,7 @@ plugin/
   README.md                 # Plugin setup and usage
 ```
 
-- `.mcp.json` points to the deployed MCP server URL. OAuth 2.1 auth is handled automatically by Claude Code on first connection.
+- `.mcp.json` points to the deployed MCP server URL. When the server has `AUTH_ENABLED=true`, OAuth 2.1 auth is handled automatically by Claude Code on first connection.
 - `SKILL.md` guides conversation flow: parse input, clarify (max 2-3 questions), search/lookup via MCP tools, calculate, present with confidence score.
 - Images handled by Claude's built-in vision (nutrition labels and food photos).
 - Restaurant food: always check `search_food` first, then web search, then cache via `save_food`.
@@ -102,7 +102,8 @@ Both `npm install` steps are required. Root installs repo-wide tooling (git hook
 - `USDA_API_KEY` -- free from https://fdc.nal.usda.gov/api-key-signup
 - `PORT` -- defaults to 3000
 - `SQLITE_DB_PATH` -- defaults to `./data/food-cache.db`
-- `ISSUER_URL` -- OAuth 2.1 issuer identifier, defaults to `http://localhost:3000`. Must be `https` in production.
+- `AUTH_ENABLED` -- set to `true` to enable OAuth 2.1 on `/mcp` routes (default `false`)
+- `ISSUER_URL` -- OAuth 2.1 issuer identifier, only relevant when `AUTH_ENABLED=true`. Defaults to `http://localhost:3000`.
 
 ## Build, Run, Test
 
@@ -117,6 +118,7 @@ mise run lint        # ESLint --fix, alias: mise run l
 mise run format      # Prettier --write, alias: mise run f
 mise run type-check  # tsc --noEmit, alias: mise run tc
 mise run quality     # All quality checks (lint + format + type-check)
+mise run deploy      # Open GitHub Actions deploy workflow in browser
 ```
 
 Equivalent npm scripts exist in `server/package.json` (`npm run dev`, `npm run build`, `npm test`, `npm run lint`, `npm run format`).
@@ -124,10 +126,24 @@ Equivalent npm scripts exist in `server/package.json` (`npm run dev`, `npm run b
 **Endpoints:**
 
 - `GET /health` -- health check (unauthenticated)
-- `POST /mcp` -- MCP Streamable HTTP (initialization and requests, requires bearer token)
-- `GET /mcp` -- SSE stream for server-initiated messages (requires bearer token)
-- `DELETE /mcp` -- session termination (requires bearer token)
-- OAuth 2.1 endpoints auto-mounted by MCP SDK's `mcpAuthRouter` (authorization, token, registration, `.well-known/oauth-authorization-server`)
+- `POST /mcp` -- MCP Streamable HTTP (initialization and requests; bearer token required when `AUTH_ENABLED=true`)
+- `GET /mcp` -- SSE stream for server-initiated messages (same auth)
+- `DELETE /mcp` -- session termination (same auth)
+- OAuth 2.1 endpoints mounted only when `AUTH_ENABLED=true` (authorization, token, registration, `.well-known/oauth-authorization-server`)
+
+## Deployment
+
+The server runs on **AWS ECS Fargate** behind an ALB. Two modes: with a custom domain (HTTPS + OAuth) or without (HTTP on ALB DNS, no auth). SQLite persistence uses EFS. Deployments are triggered manually via a GitHub Actions workflow (`mise run deploy`). See [`infra/README.md`](infra/README.md) for details on both modes.
+
+- **Dockerfile** (repo root) -- Multi-stage build: compile TypeScript, install production deps with `better-sqlite3` native addon, run as non-root `node` user.
+- **Infrastructure** (`infra/`) -- Terraform (VPC, ECS, EFS, ALB/ACM, ECR, Secrets Manager, GitHub Actions OIDC). See [`infra/README.md`](infra/README.md) for setup, variable mapping, and operations.
+- **CI/CD** (`.github/workflows/deploy.yml`) -- Manual trigger, OIDC auth (no stored AWS credentials), build+push to ECR, ECS rolling deploy, health check verification.
+
+### Guardrails
+
+- Ask before modifying Terraform files, the Dockerfile, or GitHub Actions workflows.
+- Never commit `terraform.tfvars` (contains secrets; gitignored).
+- Never hardcode AWS credentials or secrets -- use Secrets Manager and OIDC.
 
 ## Code Quality
 

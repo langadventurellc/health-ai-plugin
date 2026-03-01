@@ -1,7 +1,7 @@
 ---
 id: E-food-tracking-ai
 title: Food Tracking AI
-status: in-progress
+status: done
 priority: high
 parent: none
 prerequisites: []
@@ -190,7 +190,55 @@ affectedFiles:
     (labels/food photos/combined), restaurant food flow with save_food caching,
     response format with confidence score examples, confidence scoring scale and
     factors, and general behavioral guidelines.'
-log: []
+  Dockerfile:
+    'Created 3-stage multi-stage Dockerfile: build (TypeScript compile),
+    deps (production-only npm ci with native addon), production (clean Alpine
+    with dist/ and node_modules/ copied in, non-root user, health check,
+    /app/data directory)'
+  .dockerignore:
+    Created comprehensive .dockerignore excluding node_modules, dist,
+    .git, .env files, documentation, tests, plugin/, trellis, IDE configs,
+    database files, and other non-essential files
+  infra/main.tf: Provider config (hashicorp/aws ~> 5.0), local backend, name_prefix local
+  infra/variables.tf: 'Input variables: aws_region, domain_name, hosted_zone_id,
+    usda_api_key (sensitive), github_repo'
+  infra/outputs.tf: 'Outputs: server_url, ecr_repository_url, alb_dns_name,
+    github_actions_role_arn; Added ecs_cluster_name and ecs_service_name outputs
+    for GitHub Actions workflow configuration.'
+  infra/vpc.tf: VPC with 2 public + 2 private subnets, IGW, single NAT gateway, route tables
+  infra/security-groups.tf: ALB (HTTP/HTTPS in, port 3000 to ECS), ECS (from ALB
+    only, all egress), EFS (NFS from ECS only)
+  infra/ecr.tf: ECR repository with scan-on-push and lifecycle policy (keep last 10 images)
+  infra/efs.tf:
+    Encrypted EFS, mount targets in private subnets, access point with
+    UID/GID 1000
+  infra/alb.tf: ACM cert with DNS validation, ALB, target group (health check on
+    /health), HTTPS + HTTP->HTTPS listeners, Route53 alias
+  infra/ecs.tf:
+    ECS cluster, CloudWatch log group (30d retention), task definition
+    (0.5 vCPU, 1GB, EFS mount, secrets), service (desired 1, min healthy 100%)
+  infra/iam.tf: Task execution role (ECR pull, logs, secrets read), task role
+    (minimal), GitHub Actions OIDC provider + IAM role (ECR push, ECS deploy,
+    PassRole)
+  infra/secrets.tf: Secrets Manager secret for USDA API key
+  .gitignore: 'Added Terraform exclusions: .terraform/, *.tfstate, *.tfstate.*,
+    terraform.tfvars'
+  infra/.terraform.lock.hcl: Auto-generated provider lock file (hashicorp/aws v5.100.0)
+  .github/workflows/deploy.yml: Created GitHub Actions deploy workflow with
+    workflow_dispatch trigger, OIDC auth via
+    aws-actions/configure-aws-credentials@v6, ECR login, Docker build+push (SHA
+    + latest tags), ECS force-new-deployment with wait, and health check
+    verification. All config via GitHub Actions variables.
+  infra/README.md: Created comprehensive deployment documentation covering
+    prerequisites, architecture overview, first-time Terraform setup, GitHub
+    Actions variable mapping table, deployment instructions, plugin
+    configuration, Terraform variables reference, and useful commands (logs, ECS
+    debugging, tear down).
+  mise.toml:
+    Added deploy task that opens the GitHub Actions deploy workflow page
+    in the browser using gh CLI.
+log:
+  - 'Auto-completed: All child features are complete'
 schema: v1.0
 childrenIds:
   - F-aws-deployment

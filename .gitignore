@@ -32,3 +32,10 @@ npm-debug.log*
 
 CLAUDE.local.md
 .env.local*
+server/data
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars

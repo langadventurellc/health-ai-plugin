@@ -56,7 +56,7 @@ The server starts on `http://localhost:3000` with a health check at `/health` an
 claude plugin add ./plugin
 ```
 
-OAuth authentication is handled automatically by Claude Code on first connection.
+If the server has OAuth enabled (`AUTH_ENABLED=true`), Claude Code handles the OAuth 2.1 flow automatically on first connection. If auth is disabled, no authentication is needed.
 
 ### Running Tests
 
@@ -77,6 +77,14 @@ mise run format             # Prettier --write
 mise run type-check         # tsc --noEmit
 ```
 
+### Deployment
+
+The server deploys to AWS ECS Fargate via a GitHub Actions workflow (manual trigger). See [`infra/README.md`](infra/README.md) for full setup instructions including Terraform provisioning, GitHub Actions variable configuration, and operational commands.
+
+```bash
+mise run deploy            # Opens the deploy workflow in GitHub
+```
+
 ## Status
 
 In active development. The MCP server core is implemented with `search_food`, `get_nutrition`, `calculate_meal`, and `save_food` tools, SQLite caching, and USDA/Open Food Facts integration. See [REQUIREMENTS.md](REQUIREMENTS.md) for the full specification.
@@ -89,12 +97,9 @@ In active development. The MCP server core is implemented with `search_food`, `g
 - Meal calculation (`calculate_meal`) with deterministic nutrient summing and coverage reporting
 - SQLite cache with TTL revalidation and graceful degradation
 - Custom food storage (`save_food`) for restaurant items and nutrition labels, with 90-day TTL and upsert semantics
-- MCP OAuth 2.1 authentication with PKCE, dynamic client registration, and bearer token middleware
+- MCP OAuth 2.1 authentication with PKCE, dynamic client registration (optional via `AUTH_ENABLED` env var)
 - Claude Code plugin with `nutrition-tracker` skill (see `plugin/README.md` for setup)
-
-**Planned:**
-
-- AWS deployment
+- AWS deployment on ECS Fargate with EFS persistence and GitHub Actions CI/CD -- supports both HTTPS+auth (custom domain) and HTTP-only (ALB DNS) modes (see [`infra/README.md`](infra/README.md))
 
 ## License
 
