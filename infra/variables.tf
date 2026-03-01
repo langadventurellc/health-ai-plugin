@@ -11,7 +11,13 @@ variable "domain_name" {
 }
 
 variable "hosted_zone_id" {
-  description = "Route53 hosted zone ID. Required when domain_name is set."
+  description = "Route53 hosted zone ID for an externally-managed zone. Mutually exclusive with zone_domain_name."
+  type        = string
+  default     = null
+}
+
+variable "zone_domain_name" {
+  description = "Base domain for Route53 hosted zone creation (e.g., roomful.app). When set, Terraform creates the hosted zone and issues a wildcard ACM cert. Mutually exclusive with hosted_zone_id."
   type        = string
   default     = null
 }

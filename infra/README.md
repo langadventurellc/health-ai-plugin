@@ -6,21 +6,24 @@ AWS deployment for the Food Tracking AI MCP server. Uses Terraform for infrastru
 
 The infrastructure supports two deployment modes:
 
-| Mode          | Domain Required                        | Protocol       | Auth              | Use Case              |
-| ------------- | -------------------------------------- | -------------- | ----------------- | --------------------- |
-| **Domain**    | Yes (`domain_name` + `hosted_zone_id`) | HTTPS          | OAuth 2.1 enabled | Production            |
-| **No-domain** | No (omit both variables)               | HTTP (ALB DNS) | Disabled          | Development / testing |
+| Mode          | Domain Required                                              | Protocol       | Auth              | Use Case              |
+| ------------- | ------------------------------------------------------------ | -------------- | ----------------- | --------------------- |
+| **Domain**    | Yes (`domain_name` + `zone_domain_name` or `hosted_zone_id`) | HTTPS          | OAuth 2.1 enabled | Production            |
+| **No-domain** | No (omit all domain variables)                               | HTTP (ALB DNS) | Disabled          | Development / testing |
 
 In **no-domain mode**, the server is accessible at the ALB's default DNS name over HTTP. OAuth authentication is automatically disabled (`AUTH_ENABLED=false`). This is suitable for development and testing but **should not be used for production** since traffic is unencrypted and unauthenticated.
 
-In **domain mode**, an ACM certificate is provisioned and validated via Route53, the ALB terminates HTTPS on port 443, HTTP requests are redirected to HTTPS, and OAuth 2.1 authentication is enabled.
+In **domain mode**, an ACM certificate is provisioned and validated via Route53, the ALB terminates HTTPS on port 443, HTTP requests are redirected to HTTPS, and OAuth 2.1 authentication is enabled. Two sub-modes exist for DNS:
+
+- **Managed zone** (`zone_domain_name`): Terraform creates a Route53 hosted zone and issues a wildcard ACM certificate (`*.example.com` + `example.com`). You must update your domain registrar's nameservers to point to the Route53 nameservers from the `route53_nameservers` output.
+- **External zone** (`hosted_zone_id`): Uses an existing Route53 hosted zone. ACM certificate covers the exact `domain_name` only.
 
 ## Prerequisites
 
 - **AWS CLI** configured with credentials that have sufficient permissions for Terraform
 - **Terraform** >= 1.5
 - **Docker** (for local image builds/testing)
-- **Route53 hosted zone** for the domain you want to use (domain mode only)
+- **Route53 hosted zone** for the domain you want to use (domain mode with `hosted_zone_id` only -- not needed when using `zone_domain_name`)
 - **GitHub repository** (the OIDC trust is tied to a specific repo)
 - **USDA API key** from https://fdc.nal.usda.gov/api-key-signup
 
@@ -45,7 +48,17 @@ terraform init
 
 Create a `terraform.tfvars` file (this file is gitignored):
 
-**Domain mode** (HTTPS + auth):
+**Domain mode with managed zone** (HTTPS + auth, Terraform creates the Route53 zone):
+
+```hcl
+domain_name      = "health.example.com"
+zone_domain_name = "example.com"
+usda_api_key     = "your-usda-api-key"
+github_repo      = "your-username/food-tracking-ai"
+aws_region       = "us-west-2"  # optional, defaults to us-west-2
+```
+
+**Domain mode with external zone** (HTTPS + auth, using an existing Route53 zone):
 
 ```hcl
 domain_name    = "food.example.com"
@@ -126,13 +139,16 @@ No OAuth flow is needed since auth is disabled.
 
 ## Terraform Variables
 
-| Variable         | Required | Default     | Description                                                     |
-| ---------------- | -------- | ----------- | --------------------------------------------------------------- |
-| `domain_name`    | No       | `null`      | FQDN for the server. If null, uses ALB DNS over HTTP (no auth). |
-| `hosted_zone_id` | No       | `null`      | Route53 hosted zone ID. Required when `domain_name` is set.     |
-| `usda_api_key`   | Yes      | --          | USDA FoodData Central API key (stored in Secrets Manager)       |
-| `github_repo`    | Yes      | --          | GitHub repo in `owner/repo` format (for OIDC trust policy)      |
-| `aws_region`     | No       | `us-west-2` | AWS region for all resources                                    |
+| Variable           | Required | Default     | Description                                                                                             |
+| ------------------ | -------- | ----------- | ------------------------------------------------------------------------------------------------------- |
+| `domain_name`      | No       | `null`      | FQDN for the server (e.g., `health.example.com`). If null, uses ALB DNS over HTTP (no auth).            |
+| `zone_domain_name` | No       | `null`      | Base domain for Terraform-managed Route53 zone (e.g., `example.com`). Creates zone + wildcard ACM cert. |
+| `hosted_zone_id`   | No       | `null`      | Route53 hosted zone ID for an existing zone. Mutually exclusive with `zone_domain_name`.                |
+| `usda_api_key`     | Yes      | --          | USDA FoodData Central API key (stored in Secrets Manager)                                               |
+| `github_repo`      | Yes      | --          | GitHub repo in `owner/repo` format (for OIDC trust policy)                                              |
+| `aws_region`       | No       | `us-west-2` | AWS region for all resources                                                                            |
+
+When using `zone_domain_name`, Terraform creates the Route53 hosted zone and outputs the nameservers via `route53_nameservers`. You must configure these nameservers at your domain registrar (e.g., Namecheap → Domain → Custom DNS) before ACM certificate validation can complete.
 
 ## Useful Commands
 

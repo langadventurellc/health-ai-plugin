@@ -29,6 +29,8 @@ provider "aws" {
 }
 
 locals {
-  name_prefix = "food-tracking"
-  has_domain  = var.domain_name != null
+  name_prefix       = "food-tracking"
+  has_domain        = var.domain_name != null
+  manages_zone      = var.zone_domain_name != null
+  effective_zone_id = var.hosted_zone_id != null ? var.hosted_zone_id : (local.manages_zone ? aws_route53_zone.main[0].zone_id : null)
 }

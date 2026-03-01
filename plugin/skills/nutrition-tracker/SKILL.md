@@ -1,3 +1,10 @@
+---
+name: nutrition-tracker
+description: Track what you ate and get calculated nutritional data. Use when the user describes a meal, asks about calories or macros, sends a food photo or nutrition label, wants to log what they ate, or mentions tracking nutrition.
+argument-hint: describe what you ate, or attach a photo
+allowed-tools: mcp__food-tracking-ai__search_food, mcp__food-tracking-ai__get_nutrition, mcp__food-tracking-ai__calculate_meal, mcp__food-tracking-ai__save_food, WebSearch, WebFetch
+---
+
 # Nutrition Tracker
 
 Track what you ate and get calculated nutritional data. The user describes a

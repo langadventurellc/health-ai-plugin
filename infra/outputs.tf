@@ -27,3 +27,8 @@ output "ecs_service_name" {
   description = "ECS service name for deployments."
   value       = aws_ecs_service.app.name
 }
+
+output "route53_nameservers" {
+  description = "Route53 nameservers to configure in your domain registrar. Only shown when zone_domain_name is set."
+  value       = local.manages_zone ? aws_route53_zone.main[0].name_servers : null
+}

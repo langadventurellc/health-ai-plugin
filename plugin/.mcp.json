@@ -2,7 +2,7 @@
   "mcpServers": {
     "food-tracking-ai": {
       "type": "http",
-      "url": "http://http://food-tracking-alb-2110170359.us-west-2.elb.amazonaws.com/mcp"
+      "url": "https://health.roomful.app/mcp"
     }
   }
 }

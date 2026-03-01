@@ -1,16 +1,26 @@
+# --- Route53 Hosted Zone (managed zone mode only) ---
+
+resource "aws_route53_zone" "main" {
+  count = local.manages_zone ? 1 : 0
+  name  = var.zone_domain_name
+
+  tags = { Name = "${local.name_prefix}-zone" }
+}
+
 # --- ACM Certificate (domain mode only) ---
 
 resource "aws_acm_certificate" "main" {
-  count             = local.has_domain ? 1 : 0
-  domain_name       = var.domain_name
-  validation_method = "DNS"
+  count                     = local.has_domain ? 1 : 0
+  domain_name               = local.manages_zone ? var.zone_domain_name : var.domain_name
+  subject_alternative_names = local.manages_zone ? ["*.${var.zone_domain_name}"] : []
+  validation_method         = "DNS"
 
   tags = { Name = "${local.name_prefix}-cert" }
 
   lifecycle {
     precondition {
-      condition     = var.hosted_zone_id != null
-      error_message = "hosted_zone_id is required when domain_name is set."
+      condition     = var.hosted_zone_id != null || var.zone_domain_name != null
+      error_message = "Either hosted_zone_id or zone_domain_name is required when domain_name is set."
     }
     create_before_destroy = true
   }
@@ -25,7 +35,7 @@ resource "aws_route53_record" "cert_validation" {
     }
   } : {}
 
-  zone_id = var.hosted_zone_id
+  zone_id = local.effective_zone_id
   name    = each.value.name
   type    = each.value.type
   ttl     = 60
@@ -129,7 +139,7 @@ resource "aws_lb_listener" "http_forward" {
 
 resource "aws_route53_record" "app" {
   count   = local.has_domain ? 1 : 0
-  zone_id = var.hosted_zone_id
+  zone_id = local.effective_zone_id
   name    = var.domain_name
   type    = "A"
 
